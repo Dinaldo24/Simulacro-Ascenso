@@ -1,0 +1,26 @@
+{
+  "name": "simulador-cole",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plataforma educativa del colegio Juan Pablo Vizcardo y Guzman",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "crear-usuario": "node scripts/crear-usuario.js",
+    "cambiar-contrasena": "node scripts/cambiar-contrasena.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-mysql-session": "^3.0.3",
+    "express-rate-limit": "^7.5.0",
+    "express-session": "^1.18.1",
+    "helmet": "^8.1.0",
+    "multer": "^2.4.0",
+    "mysql2": "^3.24.6"
+  },
+  "overrides": {
+    "mysql2": "^3.24.6"
+  }
+}

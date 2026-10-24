@@ -15,7 +15,8 @@
 </head>
 
 <body>
-    <main class="login-page">
+    <main id="app">
+        <div class="login-page" id="login-page">
 
         <!-- Panel institucional -->
         <section class="brand-panel" aria-labelledby="school-name">
@@ -206,7 +207,6 @@
                         </svg>
                     </button>
                 </form>
-
                 <!-- AVISO DE SEGURIDAD -->
                 <p class="security-note">
                     <svg viewBox="0 0 24 24" fill="none"
@@ -238,6 +238,107 @@
                 </footer>
             </div>
 
+        </section>
+        </div>
+
+        <section class="dashboard" id="dashboard" aria-label="Menú principal" hidden>
+            <aside class="dashboard-sidebar">
+                <a class="dashboard-brand" href="/" aria-label="Inicio">
+                    <img src="recursos/logo%20JPVYG.png" alt="">
+                    <span>
+                        <strong>Juan Pablo</strong>
+                        <strong>Vizcardo y Guzmán</strong>
+                        <small>UGEL 03</small>
+                    </span>
+                </a>
+
+                <p class="sidebar-label">MENÚ PRINCIPAL</p>
+                <nav class="module-navigation" aria-label="Módulos">
+                    <button class="module-link is-active" type="button" data-module="repositorio" aria-current="page">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+                            <path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20M8 7h8M8 10h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                        </svg>
+                        <span>Repositorio</span>
+                    </button>
+                    <button class="module-link" type="button" data-module="simulacion">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M16 7h3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span>Simulación</span>
+                    </button>
+                </nav>
+
+                <div class="sidebar-account">
+                    <div class="account-avatar" id="account-avatar" aria-hidden="true">U</div>
+                    <div class="account-details">
+                        <strong id="account-name">Usuario</strong>
+                        <span id="account-role">Usuario</span>
+                    </div>
+                    <button class="sidebar-logout" id="logout-button" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M10 17l5-5-5-5M15 12H3m9-8h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </aside>
+
+            <div class="dashboard-main">
+                <header class="dashboard-topbar">
+                    <p>Plataforma educativa</p>
+                    <span class="topbar-school">Juan Pablo Vizcardo y Guzmán - UGEL 03</span>
+                </header>
+
+                <div class="dashboard-content">
+                    <div class="dashboard-heading">
+                        <p class="dashboard-eyebrow">MENÚ PRINCIPAL</p>
+                        <h1 id="dashboard-title">Repositorio</h1>
+                        <p id="dashboard-description">Consulta y organiza los recursos educativos del colegio.</p>
+                    </div>
+
+                    <section class="repository-panel" id="repository-panel" aria-labelledby="repository-heading">
+                        <div class="repository-toolbar">
+                            <div>
+                                <h2 id="repository-heading">Documentos PDF</h2>
+                                <p>Archivos educativos compartidos por el colegio.</p>
+                            </div>
+                            <button class="upload-toggle" id="upload-toggle" type="button" hidden>
+                                <span aria-hidden="true">+</span>
+                                Subir PDF
+                            </button>
+                        </div>
+
+                        <form class="upload-form" id="upload-form" hidden>
+                            <div class="upload-fields">
+                                <div class="upload-title-field">
+                                    <label for="document-title">Título del documento</label>
+                                    <input id="document-title" name="titulo" type="text" maxlength="150" placeholder="Ej. Material de Matemática" required>
+                                </div>
+                                <div class="upload-file-field">
+                                    <label for="document-file">Archivo PDF (máximo 25 MB)</label>
+                                    <input id="document-file" name="pdf" type="file" accept=".pdf,application/pdf" required>
+                                </div>
+                            </div>
+                            <div class="upload-form-actions">
+                                <button class="upload-cancel" id="upload-cancel" type="button">Cancelar</button>
+                                <button class="upload-submit" id="upload-submit" type="submit">Guardar PDF</button>
+                            </div>
+                        </form>
+
+                        <div class="repository-message" id="repository-message" role="status" aria-live="polite" hidden></div>
+                        <div class="document-list" id="document-list" aria-live="polite">
+                            <p class="document-list-loading">Cargando documentos...</p>
+                        </div>
+                    </section>
+
+                    <section class="simulation-placeholder" id="simulation-panel" aria-live="polite" hidden>
+                        <div class="simulation-placeholder-icon" aria-hidden="true">↗</div>
+                        <h2>Simulación</h2>
+                        <p>Este módulo estará disponible próximamente.</p>
+                    </section>
+                </div>
+            </div>
         </section>
     </main>
 </body>
