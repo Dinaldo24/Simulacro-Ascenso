@@ -10,7 +10,7 @@
 
     <link rel="icon" type="image/png" href="recursos/favicon.png">
     <link rel="stylesheet" href="css/styles.css">
-    <script src="js/app.js" defer></script>
+    <script src="js/app.js?v=login-module-fix-20261026" type="module"></script>
 
 </head>
 
@@ -248,7 +248,7 @@
                     <span>
                         <strong>Juan Pablo</strong>
                         <strong>Vizcardo y Guzmán</strong>
-                        <small>UGEL 03</small>
+                        <small>UGEL 04</small>
                     </span>
                 </a>
 
@@ -287,7 +287,7 @@
             <div class="dashboard-main">
                 <header class="dashboard-topbar">
                     <p>Plataforma educativa</p>
-                    <span class="topbar-school">Juan Pablo Vizcardo y Guzmán - UGEL 03</span>
+                    <span class="topbar-school">I.E. Juan Pablo Vizcardo y Guzmán - UGEL 04</span>
                 </header>
 
                 <div class="dashboard-content">
@@ -315,6 +315,14 @@
                                     <label for="document-title">Título del documento</label>
                                     <input id="document-title" name="titulo" type="text" maxlength="150" placeholder="Ej. Material de Matemática" required>
                                 </div>
+                                <div class="upload-course-field">
+                                    <label for="document-course">Curso</label>
+                                    <input id="document-course" name="curso" type="text" maxlength="150" placeholder="Ej. Matemática" required>
+                                </div>
+                                <div class="upload-year-field">
+                                    <label for="document-year">Año o grado</label>
+                                    <input id="document-year" name="anio" type="text" maxlength="50" placeholder="Ej. 2022" required>
+                                </div>
                                 <div class="upload-file-field">
                                     <label for="document-file">Archivo PDF (máximo 25 MB)</label>
                                     <input id="document-file" name="pdf" type="file" accept=".pdf,application/pdf" required>
@@ -332,14 +340,98 @@
                         </div>
                     </section>
 
-                    <section class="simulation-placeholder" id="simulation-panel" aria-live="polite" hidden>
-                        <div class="simulation-placeholder-icon" aria-hidden="true">↗</div>
-                        <h2>Simulación</h2>
-                        <p>Este módulo estará disponible próximamente.</p>
+                    <section class="simulation-panel" id="simulation-panel" aria-labelledby="simulation-heading" hidden>
+                        <div class="simulation-toolbar">
+                            <div>
+                                <h2 id="simulation-heading">Simulación de exámenes</h2>
+                                <p>Selecciona el año y el curso para consultar sus documentos PDF.</p>
+                            </div>
+                        </div>
+                        <div class="simulation-filters">
+                            <div class="simulation-filter">
+                                <label for="simulation-year">Año o grado</label>
+                                <select id="simulation-year" disabled>
+                                    <option value="">Selecciona un año</option>
+                                </select>
+                            </div>
+                            <div class="simulation-filter">
+                                <label for="simulation-course">Curso</label>
+                                <select id="simulation-course" disabled>
+                                    <option value="">Selecciona un curso</option>
+                                </select>
+                            </div>
+                            <div class="simulation-filter" id="simulation-document-filter" hidden>
+                                <label for="simulation-document">Documento PDF</label>
+                                <select id="simulation-document" disabled>
+                                    <option value="">Selecciona un documento</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p class="simulation-message" id="simulation-message" role="status" aria-live="polite">
+                            Cargando cursos y años...
+                        </p>
+                        <div class="simulation-viewer" id="simulation-viewer" hidden>
+                            <div class="simulation-viewer-header">
+                                <h3 id="simulation-document-title"></h3>
+                                <a class="simulation-download" id="simulation-download" href="#" download>Descargar PDF</a>
+                            </div>
+                            <iframe class="simulation-pdf-frame" id="simulation-pdf-frame" title="Vista del documento seleccionado" src="about:blank"></iframe>
+                        </div>
                     </section>
                 </div>
             </div>
         </section>
+
+        <dialog class="pdf-preview-dialog" id="pdf-preview-dialog" aria-labelledby="pdf-preview-title">
+            <div class="pdf-preview-header">
+                <h2 id="pdf-preview-title">Vista previa del PDF</h2>
+                <button class="pdf-preview-close" id="pdf-preview-close" type="button" aria-label="Cerrar vista previa">
+                    <span aria-hidden="true">×</span>
+                </button>
+            </div>
+            <iframe class="pdf-preview-frame" id="pdf-preview-frame" title="Contenido del PDF" src="about:blank"></iframe>
+        </dialog>
+
+        <dialog class="cover-editor-dialog" id="cover-editor-dialog" aria-labelledby="cover-editor-title">
+            <div class="pdf-preview-header">
+                <h2 id="cover-editor-title">Cambiar portada del PDF</h2>
+                <button class="pdf-preview-close" id="cover-editor-close" type="button" aria-label="Cerrar editor de portada">
+                    <span aria-hidden="true">×</span>
+                </button>
+            </div>
+            <div class="cover-editor-content">
+                <p class="cover-editor-intro">Elige una página del documento o sube una imagen para mostrarla como portada.</p>
+                <div class="cover-editor-layout">
+                    <section class="cover-editor-option" aria-labelledby="cover-page-heading">
+                        <h3 id="cover-page-heading">Elegir una página del PDF</h3>
+                        <div class="cover-editor-page-preview">
+                            <canvas id="cover-page-canvas" aria-label="Vista previa de la página seleccionada"></canvas>
+                        </div>
+                        <p class="cover-page-status" id="cover-page-status" role="status" aria-live="polite"></p>
+                        <div class="cover-page-controls">
+                            <button class="cover-page-step" id="cover-page-previous" type="button" aria-label="Página anterior">−</button>
+                            <label for="cover-page-number">Página</label>
+                            <input id="cover-page-number" type="number" min="1" value="1" disabled>
+                            <span id="cover-page-count">de ...</span>
+                            <button class="cover-page-step" id="cover-page-next" type="button" aria-label="Página siguiente">+</button>
+                        </div>
+                        <button class="cover-editor-save" id="cover-page-save" type="button" disabled>Usar esta página</button>
+                    </section>
+                    <section class="cover-editor-option" aria-labelledby="cover-image-heading">
+                        <h3 id="cover-image-heading">Subir una imagen</h3>
+                        <p class="cover-image-help">Formatos PNG, JPEG (.jpg, .jpeg, .jpe) o WebP, hasta 5 MB.</p>
+                        <label class="cover-image-picker" for="cover-image-input">Seleccionar imagen</label>
+                        <input class="cover-image-input" id="cover-image-input" type="file" accept=".png,.jpg,.jpeg,.jpe,.webp,image/png,image/jpeg,image/webp">
+                        <p class="cover-image-status" id="cover-image-status" role="status" aria-live="polite" hidden></p>
+                        <div class="cover-image-preview-container" id="cover-image-preview-container" hidden>
+                            <img class="cover-image-preview" id="cover-image-preview" alt="Vista previa de la imagen elegida">
+                            <button class="cover-image-clear" id="cover-image-clear" type="button" aria-label="Quitar imagen seleccionada" title="Quitar imagen">×</button>
+                        </div>
+                        <button class="cover-editor-save" id="cover-image-save" type="button" hidden>Usar esta imagen</button>
+                    </section>
+                </div>
+            </div>
+        </dialog>
     </main>
 </body>
 

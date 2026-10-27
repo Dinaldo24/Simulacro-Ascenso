@@ -4,10 +4,19 @@
   "private": true,
   "description": "Plataforma educativa del colegio Juan Pablo Vizcardo y Guzman",
   "scripts": {
+    "predev": "npm run build:client && npm run build:server-utils",
     "dev": "node server.js",
+    "prestart": "npm run build:client && npm run build:server-utils",
     "start": "node server.js",
-    "crear-usuario": "node scripts/crear-usuario.js",
-    "cambiar-contrasena": "node scripts/cambiar-contrasena.js"
+    "build:client": "tsc --project tsconfig.json",
+    "typecheck": "npm run typecheck:client && npm run typecheck:scripts && npm run typecheck:server",
+    "typecheck:client": "tsc --project tsconfig.json --noEmit",
+    "typecheck:scripts": "tsc --project tsconfig.scripts.json --noEmit",
+    "typecheck:server": "tsc --project tsconfig.server-utils.json --noEmit",
+    "build:scripts": "tsc --project tsconfig.scripts.json",
+    "build:server-utils": "tsc --project tsconfig.server-utils.json",
+    "crear-usuario": "npm run build:scripts && node scripts/compiled/crear-usuario.js",
+    "cambiar-contrasena": "npm run build:scripts && node scripts/compiled/cambiar-contrasena.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
@@ -17,10 +26,18 @@
     "express-rate-limit": "^7.5.0",
     "express-session": "^1.18.1",
     "helmet": "^8.1.0",
-    "multer": "^2.4.0",
-    "mysql2": "^3.24.6"
+    "multer": "^2.5.0",
+    "mysql2": "^3.24.6",
+    "pdfjs-dist": "^4.10.38"
   },
   "overrides": {
     "mysql2": "^3.24.6"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/express-session": "^1.19.0",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
   }
 }
