@@ -1,0 +1,7 @@
+node_modules/
+.env
+npm-debug.log*
+storage/pdfs/
+js/compiled/
+scripts/compiled/
+server/compiled/

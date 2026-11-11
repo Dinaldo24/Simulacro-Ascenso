@@ -1,7 +1,20 @@
-node_modules/
-.env
+# Dependencias y builds
+**/node_modules/
+back/dist/
+front/js/compiled/
+front/scripts/compiled/
+front/server/compiled/
+
+# Secretos
+**/.env
+!**/.env.example
+
+# Datos y archivos subidos
+storage/
+back/uploads/
+front/storage/
+
+# Python / logs
+__pycache__/
+*.pyc
 npm-debug.log*
-storage/pdfs/
-js/compiled/
-scripts/compiled/
-server/compiled/

@@ -1,1 +1,0 @@
-import "./compiled/app.js";
