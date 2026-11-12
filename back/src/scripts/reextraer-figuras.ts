@@ -8,6 +8,7 @@ import { AppDataSource } from "../database/data-source";
 import { dirFigurasExamen } from "../modules/examen/services/ExamenCatalogoService";
 import { Examen } from "../modules/examen/entities/Examen";
 import { Pregunta } from "../modules/pregunta/entities/Pregunta";
+import { Opcion } from "../modules/opcion/entities/Opcion";
 import { resolverRutaSegura } from "../utils/storage";
 
 const execFileAsync = promisify(execFile);
@@ -34,14 +35,44 @@ async function main(): Promise<void> {
             const preguntas = JSON.parse(await fs.readFile(jsonTmp, "utf-8")) as {
                 numero: number;
                 figuras?: string[];
+                figurasAlternativas?: Record<string, string>;
             }[];
             const repo = AppDataSource.getRepository(Pregunta);
+            const repoOpcion = AppDataSource.getRepository(Opcion);
             await repo.update({ examen: { id: e.id } }, { figuras: null });
+            const pregs = await repo.find({ where: { examen: { id: e.id } }, select: { id: true, numero: true } });
+            const pregIdPorNumero = new Map(pregs.map((p) => [p.numero, p.id]));
+            if (pregs.length > 0) {
+                await repoOpcion
+                    .createQueryBuilder()
+                    .update(Opcion)
+                    .set({ figura: null })
+                    .where("preguntaId IN (:...ids)", { ids: pregs.map((p) => p.id) })
+                    .execute();
+            }
             let total = 0;
             for (const q of preguntas) {
-                if (!q.figuras?.length) continue;
-                await repo.update({ examen: { id: e.id }, numero: q.numero }, { figuras: q.figuras });
-                total += q.figuras.length;
+                if (q.figuras?.length) {
+                    await repo.update({ examen: { id: e.id }, numero: q.numero }, { figuras: q.figuras });
+                    total += q.figuras.length;
+                }
+                const preguntaId = pregIdPorNumero.get(q.numero);
+                if (preguntaId && q.figurasAlternativas) {
+                    for (const [letra, archivo] of Object.entries(q.figurasAlternativas)) {
+                        const limpio = typeof archivo === "string" ? archivo.trim() : "";
+                        if (!limpio) continue;
+                        await repoOpcion
+                            .createQueryBuilder()
+                            .update(Opcion)
+                            .set({ figura: limpio })
+                            .where("preguntaId = :pid AND letra = :letra", {
+                                pid: preguntaId,
+                                letra: letra.trim().toUpperCase().slice(0, 1),
+                            })
+                            .execute();
+                        total++;
+                    }
+                }
             }
             const destino = dirFigurasExamen(e.anio, e.archivoBase);
             await fs.rm(destino, { recursive: true, force: true });

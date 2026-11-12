@@ -16,6 +16,13 @@ export interface PreguntaExtraida {
     correcta?: string;
     contexto?: string;
     figuras?: string[];
+    figurasAlternativas?: Record<string, string>;
+}
+
+const RE_NOMBRE_FIGURA = /^q\d{1,3}_\d{1,2}\.png$/;
+
+function urlFiguraExamen(anio: string | number | null | undefined, curso: string | null | undefined, archivo: string): string {
+    return `/examenes-disponibles/${encodeURIComponent(String(anio ?? ""))}/${encodeURIComponent(String(curso ?? ""))}/figuras/${archivo}`;
 }
 
 export interface ExamenDisponible {
@@ -157,14 +164,23 @@ export async function importarExamen(params: {
                     examen,
                 }),
             );
-            const opciones = Object.entries(q.alternativas).map(([letra, texto]) =>
-                manager.getRepository(Opcion).create({
-                    letra: letra.trim().toUpperCase().slice(0, 1),
+            const figsAltNorm = new Map<string, string>();
+            for (const [k, v] of Object.entries(q.figurasAlternativas ?? {})) {
+                const limpio = typeof v === "string" ? v.trim() : "";
+                if (RE_NOMBRE_FIGURA.test(limpio)) {
+                    figsAltNorm.set(k.trim().toUpperCase().slice(0, 1), limpio);
+                }
+            }
+            const opciones = Object.entries(q.alternativas).map(([letra, texto]) => {
+                const letraNorm = letra.trim().toUpperCase().slice(0, 1);
+                return manager.getRepository(Opcion).create({
+                    letra: letraNorm,
                     texto: String(texto),
-                    esCorrecta: correcta !== "" && letra.trim().toUpperCase() === correcta,
+                    figura: figsAltNorm.get(letraNorm) ?? null,
+                    esCorrecta: correcta !== "" && letraNorm === correcta,
                     pregunta,
-                }),
-            );
+                });
+            });
             if (opciones.length > 0) await manager.getRepository(Opcion).save(opciones);
         }
         return { examenId: examen.id, total: params.preguntas.length, conClave };
@@ -185,6 +201,9 @@ export async function obtenerPreguntasExamen(
     });
     return preguntas.map((p) => {
         const opciones = [...p.opciones].sort((a, b) => a.letra.localeCompare(b.letra));
+        const figurasAltEntries = opciones
+            .filter((o) => Boolean(o.figura))
+            .map((o) => [o.letra, urlFiguraExamen(examen.anio, examen.curso, o.figura!)] as const);
         return {
             anio: Number.isNaN(Number(examen.anio)) ? examen.anio : Number(examen.anio),
             curso: examen.curso,
@@ -194,11 +213,11 @@ export async function obtenerPreguntasExamen(
             ...(p.contexto ? { contexto: p.contexto } : {}),
             ...(p.figuras?.length
                 ? {
-                      figuras: p.figuras.map(
-                          (f) =>
-                              `/examenes-disponibles/${encodeURIComponent(examen.anio as string)}/${encodeURIComponent(examen.curso as string)}/figuras/${f}`,
-                      ),
+                      figuras: p.figuras.map((f) => urlFiguraExamen(examen.anio, examen.curso, f)),
                   }
+                : {}),
+            ...(figurasAltEntries.length > 0
+                ? { figurasAlternativas: Object.fromEntries(figurasAltEntries) }
                 : {}),
         } as PreguntaExtraida;
     });

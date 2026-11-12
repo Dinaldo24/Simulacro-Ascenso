@@ -2783,3 +2783,29 @@ button {
     border-radius: 8px;
     padding: 6px;
 }
+
+.simulador-option-label.is-visual {
+    align-items: flex-start;
+}
+
+.simulador-option-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+}
+
+.simulador-option-figure {
+    max-width: 100%;
+    max-height: 260px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    align-self: flex-start;
+    background: #fff;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 6px;
+    display: block;
+}

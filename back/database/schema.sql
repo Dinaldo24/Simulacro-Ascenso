@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS `opciones` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `letra` CHAR(1) NOT NULL DEFAULT 'A',
   `texto` TEXT NOT NULL,
+  `figura` VARCHAR(100) NULL,
   `esCorrecta` TINYINT NOT NULL DEFAULT 0,
   `preguntaId` INT NOT NULL,
   PRIMARY KEY (`id`),

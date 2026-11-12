@@ -83,20 +83,26 @@ def _extraer_rango_ctx(linea: str) -> Optional[List[int]]:
 
 
 def _partir_en_linea(letra: str, resto: str) -> List[Tuple[str, str]]:
-    """Separa múltiples alternativas si vienen en una sola línea (ej. 'A) 10  B) 20  C) 30')."""
+    """Separa múltiples alternativas si vienen en una sola línea (ej. 'A) 10  B) 20  C) 30' o 'A)  B)  C)')."""
     letra = letra.upper()
     if letra not in LETRAS:
         return [(letra, resto.strip())]
-    
+
     partes: List[Tuple[str, str]] = []
     idx = LETRAS.index(letra)
     while idx + 1 < len(LETRAS):
         sig = LETRAS[idx + 1]
-        m = re.search(r"\s[\(\[\{]?[" + sig + sig.lower() + r"]" + CIERRE + r"+\s+", resto)
+        clase_sig = f"[{sig}{sig.lower()}]"
+        patron = (
+            r"(?:^|\s)(?:(?:alternativa|alt\.?|opci[o\u00f3]n|option|opt\.?|rpta\.?)\s+"
+            + r"[\(\[\{]?" + clase_sig + r"[\)\]\}\.\-\u2013:]*"
+            + r"|[\(\[\{]?" + clase_sig + CIERRE + r"+)(?=\s|$)"
+        )
+        m = re.search(patron, resto, re.I)
         if not m:
             break
         partes.append((LETRAS[idx], resto[:m.start()].strip()))
-        resto, idx = resto[m.end():], idx + 1
+        resto, idx = resto[m.end():].strip(), idx + 1
     partes.append((LETRAS[idx], resto.strip()))
     return partes
 
@@ -335,9 +341,13 @@ def agrupar_preguntas(paginas: List[str], anio: int, curso: str) -> List[Dict[st
 # incrustadas), así que se recortan renderizando la región de la página.
 # ---------------------------------------------------------------------------
 RE_ETIQUETA_PREG = re.compile(r"^(?:pregunta|question)\s+(\d{1,3})\s*$", re.I)
-RE_ETIQUETA_ALT = re.compile(r"^(?:alternativa|option)\s+([A-E])(?:\s|$)", re.I)
+RE_ETIQUETA_ALT = re.compile(
+    r"^(?:alternativa|alt\.?|opci[o\u00f3]n|option|opt\.?|rpta\.?)\s*[\(\[\{]?([A-E])[\)\]\}\.\-\u2013:]*(?:\s|$)",
+    re.I,
+)
+RE_MARCA_ALT_SOLO = re.compile(r"^[\(\[\{]?([A-Ea-e])" + CIERRE + r"+$")
 RE_ROTULO_FIG = re.compile(r"^(?:imagen|figura|tabla|gr[a\u00e1]fico)\s+\d+", re.I)
-MAX_FIGURAS_POR_PREGUNTA = 6
+MAX_FIGURAS_POR_PREGUNTA = 10
 
 
 def _rect_norm(r) -> Any:
@@ -477,7 +487,9 @@ def _figuras_de_pagina(page, bloques, xrefs_decorativos: Optional[set] = None) -
     """Rectángulos de figuras, tablas o fórmulas de la página, sin marcos ni decoración."""
     ancho, alto = page.rect.width, page.rect.height
     etiquetas = [fitz.Rect(b[:4]) for b in bloques
-                 if RE_ETIQUETA_PREG.match(b[4].strip()) or RE_ETIQUETA_ALT.match(b[4].strip())]
+                 if RE_ETIQUETA_PREG.match(b[4].strip())
+                 or RE_ETIQUETA_ALT.match(_primera_linea(b))
+                 or RE_MARCA_ALT_SOLO.match(b[4].strip())]
     etiquetas_preg = [fitz.Rect(b[:4]) for b in bloques if RE_ETIQUETA_PREG.match(b[4].strip())]
     candidatos: List[Any] = []
     largos = [bl for bl in bloques if len(bl[4].strip()) > 40]
@@ -514,8 +526,8 @@ def _figuras_de_pagina(page, bloques, xrefs_decorativos: Optional[set] = None) -
             continue                                                  # subrayado de énfasis en texto ("no", "metacognición")
         if any(_rect_en(nr, e, 14.0) for e in etiquetas):             # fondo de "Pregunta N"/"Alternativa X"
             continue
-        if rw < 150 and rh < 40 and any(
-            nr.intersects(fitz.Rect(e.x0 - 10, e.y0 - 10, e.x1 + 40, e.y1 + 10)) for e in etiquetas
+        if rw <= 42 and rh <= 30 and any(
+            nr.intersects(fitz.Rect(e.x0 - 8, e.y0 - 6, e.x1 + 18, e.y1 + 6)) for e in etiquetas
         ):
             continue                                                  # casillas/adornos junto a etiquetas
 
@@ -582,7 +594,10 @@ def _figuras_de_pagina(page, bloques, xrefs_decorativos: Optional[set] = None) -
         txt = b[4].strip()
         if not txt or b[1] >= 795 or b[1] < 38:
             continue
-        if RE_ETIQUETA_ALT.match(txt) or RE_ETIQUETA_PREG.match(txt) or _extraer_rango_ctx(" ".join(txt.split())) or RE_CLOZE_HDR.match(txt):
+        lineas_b = [ln.strip() for ln in txt.splitlines() if ln.strip()]
+        if RE_ETIQUETA_ALT.match(_primera_linea(b)) or RE_ALT_MARCA.match(_primera_linea(b)) \
+                or (lineas_b and all(RE_ETIQUETA_ALT.match(ln) or RE_MARCA_ALT_SOLO.match(ln) for ln in lineas_b)) \
+                or RE_ETIQUETA_PREG.match(txt) or _extraer_rango_ctx(" ".join(txt.split())) or RE_CLOZE_HDR.match(txt):
             continue
         if _es_prosa_cuerpo(b):
             continue
@@ -675,16 +690,159 @@ def _ajustar_clip(page, rect_recorte, bloques, pad: float = 6.0):
     return fitz.Rect(x0, y0, x1, y1) & page.rect
 
 
-def extraer_figuras(ruta_pdf: str, numeros: List[int], dir_salida: str) -> Dict[int, List[str]]:
-    """Recorta cada figura y la asocia a la pregunta o contexto compartido que la precede."""
+RE_PALABRA_ALT_SOLO = re.compile(r"^(?:alternativa|alt\.?|opci[o\u00f3]n|option|opt\.?|rpta\.?)$", re.I)
+RE_LETRA_SOLA_ALT = re.compile(r"^[\(\[\{]?([A-Ea-e])[\)\]\}\.\-\u2013:]*$")
+
+
+def _marcadores_alt_en_bloque(page, b) -> List[Tuple[str, Any, bool]]:
+    """Extrae uno o varios marcadores de alternativa (letra, rect, es_palabra) dentro de un bloque."""
+    texto = b[4].strip()
+    l0 = _primera_linea(b)
+    if not (RE_ETIQUETA_ALT.match(l0) or RE_ALT_MARCA.match(l0) or RE_MARCA_ALT_SOLO.match(texto)):
+        # También revisa si un bloque de opciones horizontales empieza más adelante o en líneas siguientes
+        if not any(RE_ETIQUETA_ALT.match(ln.strip()) or RE_ALT_MARCA.match(ln.strip()) for ln in texto.splitlines()):
+            return []
+
+    clip_b = fitz.Rect(b[0] - 1, b[1] - 1, b[2] + 1, b[3] + 1)
+    words = sorted(page.get_text("words", clip=clip_b), key=lambda w: (w[5], w[6], w[0]))
+    encontrados: List[Tuple[str, Any, bool]] = []
+    idx = 0
+    while idx < len(words):
+        w = words[idx]
+        wtxt = w[4].strip()
+        es_inicio_linea = (idx == 0) or (words[idx - 1][5] != w[5]) or (words[idx - 1][6] != w[6])
+        tiene_salto_h = (not es_inicio_linea) and (w[0] - words[idx - 1][2] >= 8.0)
+
+        if es_inicio_linea or tiene_salto_h:
+            if RE_PALABRA_ALT_SOLO.match(wtxt) and idx + 1 < len(words):
+                wn = words[idx + 1]
+                ml = RE_LETRA_SOLA_ALT.match(wn[4].strip())
+                if wn[5] == w[5] and wn[6] == w[6] and ml:
+                    rect = fitz.Rect(w[:4]) | fitz.Rect(wn[:4])
+                    encontrados.append((ml.group(1).upper(), rect, True))
+                    idx += 2
+                    continue
+            if RE_MARCA_ALT_SOLO.match(wtxt):
+                mm = RE_MARCA_ALT_SOLO.match(wtxt)
+                if mm:
+                    encontrados.append((mm.group(1).upper(), fitz.Rect(w[:4]), False))
+                    idx += 1
+                    continue
+        idx += 1
+
+    if encontrados:
+        return encontrados
+
+    m_pal = RE_ETIQUETA_ALT.match(l0)
+    if m_pal:
+        return [(m_pal.group(1).upper(), fitz.Rect(b[0], b[1], b[2], min(b[3], b[1] + 22)), True)]
+    m_mar = RE_ALT_MARCA.match(l0)
+    if m_mar:
+        return [(m_mar.group(1).upper(), fitz.Rect(b[0], b[1], b[2], min(b[3], b[1] + 22)), False)]
+    return []
+
+
+def _agrupar_filas_alt(alts: List[Tuple[str, Any]]) -> List[List[Tuple[str, Any]]]:
+    """Agrupa marcadores de alternativa por fila visual horizontal (tol 22 pt)."""
+    if not alts:
+        return []
+    orden = sorted(alts, key=lambda it: ((it[1].y0 + it[1].y1) / 2.0, it[1].x0))
+    filas: List[List[Tuple[str, Any]]] = [[orden[0]]]
+    fila_yc = (orden[0][1].y0 + orden[0][1].y1) / 2.0
+    for item in orden[1:]:
+        yc = (item[1].y0 + item[1].y1) / 2.0
+        if abs(yc - fila_yc) <= 22.0:
+            filas[-1].append(item)
+            fila_yc = sum((x[1].y0 + x[1].y1) / 2.0 for x in filas[-1]) / len(filas[-1])
+        else:
+            filas.append([item])
+            fila_yc = yc
+    for fila in filas:
+        fila.sort(key=lambda it: it[1].x0)
+    return filas
+
+
+def _elegir_opcion_en_fila(fig, fila: List[Tuple[str, Any]]) -> str:
+    """Asocia una figura horizontalmente a la alternativa dueña en una fila con >=2 opciones."""
+    if len(fila) == 1:
+        return fila[0][0]
+    row_max_y1 = max(r.y1 for _, r in fila)
+    if fig.y0 < row_max_y1 + 4.0:
+        # Marcador a la izquierda de su figura: último marcador cuya x0 no supera el inicio de la figura
+        cands = [i for i, (_, r) in enumerate(fila) if r.x0 <= fig.x0 + 8.0]
+        return fila[cands[-1] if cands else 0][0]
+    # Marcador encima de la figura: prioriza traslape horizontal único o centro más cercano
+    solapan = [letra for letra, r in fila if r.x1 + 6.0 >= fig.x0 and r.x0 - 6.0 <= fig.x1]
+    if len(solapan) == 1:
+        return solapan[0]
+    fig_cx = (fig.x0 + fig.x1) / 2.0
+    return min(fila, key=lambda it: abs(fig_cx - (it[1].x0 + it[1].x1) / 2.0))[0]
+
+
+def _asignar_figuras_de_pregunta(
+    figs: List[Any],
+    alts: List[Tuple[str, Any]],
+    bloques: List[Any],
+    alt_continuada: Optional[str] = None,
+) -> List[Tuple[Optional[str], Any]]:
+    """Clasifica cada figura de una pregunta como enunciado (None) o perteneciente a una alternativa ('A'..'E')."""
+    if not alts:
+        if alt_continuada and figs:
+            # Solo continúa la opción previa en nueva página si no hay prosa larga arriba separándola
+            return [
+                (alt_continuada if not any(len(b[4].strip()) > 40 and b[3] <= f.y0 + 2 for b in bloques) else None, f)
+                for f in figs
+            ]
+        return [(None, f) for f in figs]
+
+    filas = _agrupar_filas_alt(alts)
+    first_row = filas[0]
+    first_y0 = min(r.y0 for _, r in first_row)
+
+    # Detección opcional de rótulos debajo de figuras en fila horizontal ([fig A][fig B][fig C] + A) B) C))
+    sobre_primera = [f for f in figs if f.y1 <= first_y0 + 2.0]
+    capturas_bajo_fig = set()
+    if len(first_row) >= 2:
+        cerca = [
+            f for f in sobre_primera
+            if 0.0 <= first_y0 - f.y1 <= 30.0 and not _bloque_entre(bloques, f.y1, first_y0, f)
+        ]
+        if len(cerca) >= len(first_row):
+            for idx_f, f in enumerate(figs):
+                if f in cerca:
+                    capturas_bajo_fig.add(idx_f)
+
+    salida: List[Tuple[Optional[str], Any]] = []
+    for idx_f, f in enumerate(figs):
+        if idx_f in capturas_bajo_fig:
+            fig_cx = (f.x0 + f.x1) / 2.0
+            letra = min(first_row, key=lambda it: abs(fig_cx - (it[1].x0 + it[1].x1) / 2.0))[0]
+            salida.append((letra, f))
+            continue
+
+        if f.y1 <= first_y0 + 2.0:
+            if alt_continuada and not any(len(b[4].strip()) > 40 and b[3] <= f.y0 + 2 for b in bloques):
+                salida.append((alt_continuada, f))
+            else:
+                salida.append((None, f))
+            continue
+
+        f_mid_y = (f.y0 + f.y1) / 2.0
+        ri = 0
+        for k, fila in enumerate(filas):
+            if min(r.y0 for _, r in fila) <= f_mid_y + 4.0:
+                ri = k
+        letra = _elegir_opcion_en_fila(f, filas[ri])
+        salida.append((letra, f))
+    return salida
+
+
+def extraer_figuras(ruta_pdf: str, numeros: List[int], dir_salida: str) -> Dict[int, Dict[str, Any]]:
+    """Recorta figuras por pregunta y distingue si pertenecen al enunciado o a cada alternativa (A-E)."""
     if fitz is None:
         return {}
     conocidas = set(numeros)
-    resultado: Dict[int, List[str]] = {}
-    actual: Optional[int] = None
-    ctx_actual: Optional[List[int]] = None
-    alt_actual: Optional[Tuple[str, Any]] = None
-    ultimo = 0
+    resultado: Dict[int, Dict[str, Any]] = {}
 
     with fitz.open(ruta_pdf) as doc:
         usos: Dict[int, int] = {}
@@ -693,10 +851,21 @@ def extraer_figuras(ruta_pdf: str, numeros: List[int], dir_salida: str) -> Dict[
                 usos[img[0]] = usos.get(img[0], 0) + 1
         decorativos = {x for x, n in usos.items() if n >= 2}
 
-        for page in doc:
+        # Fase 1: recolecta eventos de página ordenados para validar opciones A..E sin falsos positivos
+        bloques_por_pag: List[List[Any]] = []
+        slices_ctx: List[Tuple[int, List[int], Any]] = []
+        slices_preg: Dict[int, List[Dict[str, Any]]] = {}
+
+        actual: Optional[int] = None
+        ctx_actual: Optional[List[int]] = None
+        ultimo_q = 0
+
+        for pidx, page in enumerate(doc):
             bloques = page.get_text("blocks")
+            bloques_por_pag.append(bloques)
             mid_x = page.rect.width / 2
-            eventos: List[Tuple[int, float, str, Any]] = []   # (columna, y, tipo, dato)
+            eventos: List[Tuple[int, float, str, Any]] = []
+            figs_pag = _figuras_de_pagina(page, bloques, decorativos)
 
             def columna(x0: float, x1: float) -> int:
                 return 0 if (x0 + x1) / 2 < mid_x else 1
@@ -713,58 +882,118 @@ def extraer_figuras(ruta_pdf: str, numeros: List[int], dir_salida: str) -> Dict[
                         eventos.append((col, b[1], "ctx", dests))
                         continue
 
-                m_alt = RE_ETIQUETA_ALT.match(texto)
-                if m_alt:
-                    eventos.append((col, b[1], "alt", (m_alt.group(1).upper(), fitz.Rect(b[0], b[1], b[2] + 10, b[3]))))
+                l0 = _primera_linea(b)
+                m = RE_ETIQUETA_PREG.match(texto)
+                if m and int(m.group(1)) in conocidas:
+                    eventos.append((col, b[1], "preg", int(m.group(1))))
                     continue
 
-                m = RE_ETIQUETA_PREG.match(texto)
-                numero = int(m.group(1)) if m else None
-                if numero is None:
-                    m2 = RE_PREG_NUM.match(texto.splitlines()[0])
-                    if m2 and int(m2.group(1)) == ultimo + 1 and int(m2.group(1)) in conocidas:
-                        numero = int(m2.group(1))
-                if numero is not None and numero in conocidas:
-                    eventos.append((col, b[1], "preg", numero))
-                    ultimo = max(ultimo, numero)
+                if not RE_ORDINAL.match(l0):
+                    m2 = RE_PREG_NUM.match(l0)
+                    cand_resto = (m2.group(2) or "").strip() if m2 else ""
+                    if m2 and int(m2.group(1)) in conocidas and not re.match(r"^(?:_{2,}|\.{3,}|\u2026)", cand_resto):
+                        eventos.append((col, b[1], "cand_preg", int(m2.group(1))))
+                        continue
 
-            for r in _figuras_de_pagina(page, bloques, decorativos):
+                for letra, arect, es_pal in _marcadores_alt_en_bloque(page, b):
+                    # Ignora marcas cortas incrustadas dentro del interior de una figura (ej. vértices)
+                    if not es_pal and any(_rect_en(arect, fr, -2.0) for fr in figs_pag):
+                        continue
+                    eventos.append((columna(arect.x0, arect.x1), arect.y0, "alt", (letra, arect, es_pal)))
+
+            for r in figs_pag:
                 eventos.append((columna(r.x0, r.x1), r.y0, "fig", r))
 
-            # Una sola columna: el orden es solo vertical (igual que extraer_texto_paginas)
-            dos_columnas = any(e[0] == 1 for e in eventos if e[2] == "preg") and any(e[0] == 0 for e in eventos if e[2] == "preg")
-            prioridad = {"ctx": 0, "preg": 1, "alt": 2, "fig": 3}
+            dos_columnas = any(e[0] == 1 for e in eventos if e[2] in ("preg", "cand_preg")) and any(e[0] == 0 for e in eventos if e[2] in ("preg", "cand_preg"))
+            prioridad = {"ctx": 0, "preg": 1, "cand_preg": 1, "alt": 2, "fig": 3}
             eventos.sort(key=lambda e: ((e[0] if dos_columnas else 0), e[1], prioridad[e[2]]))
 
-            for _col, _y, tipo, dato in eventos:
-                if tipo == "ctx":
-                    ctx_actual, actual, alt_actual = dato, None, None
-                elif tipo == "preg":
-                    actual, ctx_actual, alt_actual = dato, None, None
-                elif tipo == "alt":
-                    alt_actual = dato
-                elif tipo == "fig":
-                    destinos = [actual] if actual is not None else (ctx_actual or [])
-                    if not destinos:
-                        continue
-                    rect_recorte = fitz.Rect(dato)
-                    if actual is not None and alt_actual is not None:
-                        _letra, alt_rect = alt_actual
-                        if dato.y0 >= alt_rect.y0 - 2 and dato.y0 - alt_rect.y1 <= 30 \
-                                and not _bloque_entre(bloques, alt_rect.y1, dato.y0, alt_rect):
-                            rect_recorte = rect_recorte | alt_rect
-                        alt_actual = None
+            cur_slice: Optional[Dict[str, Any]] = None
+            if actual is not None:
+                cur_slice = {"page": pidx, "alts": [], "figs": []}
+                slices_preg.setdefault(actual, []).append(cur_slice)
 
-                    clip = _ajustar_clip(page, rect_recorte, bloques)
-                    pix = page.get_pixmap(clip=clip, dpi=160)
-                    os.makedirs(dir_salida, exist_ok=True)
-                    for qnum in destinos:
-                        lista = resultado.get(qnum, [])
-                        if len(lista) >= MAX_FIGURAS_POR_PREGUNTA:
-                            continue
-                        nombre = f"q{qnum}_{len(lista) + 1}.png"
-                        pix.save(os.path.join(dir_salida, nombre))
-                        resultado.setdefault(qnum, []).append(nombre)
+            for _col, _y, tipo, dato in eventos:
+                if tipo == "cand_preg":
+                    if dato != ultimo_q + 1:
+                        continue
+                    tipo = "preg"
+                if tipo == "ctx":
+                    ctx_actual, actual, cur_slice = dato, None, None
+                elif tipo == "preg":
+                    actual, ctx_actual = dato, None
+                    ultimo_q = max(ultimo_q, dato)
+                    cur_slice = {"page": pidx, "alts": [], "figs": []}
+                    slices_preg.setdefault(actual, []).append(cur_slice)
+                elif tipo == "alt" and cur_slice is not None:
+                    cur_slice["alts"].append(dato)
+                elif tipo == "fig":
+                    if actual is not None and cur_slice is not None:
+                        cur_slice["figs"].append(dato)
+                    elif ctx_actual:
+                        slices_ctx.append((pidx, list(ctx_actual), dato))
+
+        # Fase 2: guarda figuras de contexto (siempre al enunciado) y figuras por pregunta (enunciado vs opciones)
+        conteo_por_preg: Dict[int, int] = {}
+
+        def _guardar_recorte(qnums: List[int], pidx: int, rect_recorte) -> List[Tuple[int, str]]:
+            page = doc[pidx]
+            clip = _ajustar_clip(page, rect_recorte, bloques_por_pag[pidx])
+            pix = page.get_pixmap(clip=clip, dpi=160)
+            os.makedirs(dir_salida, exist_ok=True)
+            guardadas: List[Tuple[int, str]] = []
+            for qnum in qnums:
+                n_actual = conteo_por_preg.get(qnum, 0)
+                if n_actual >= MAX_FIGURAS_POR_PREGUNTA:
+                    continue
+                nombre = f"q{qnum}_{n_actual + 1}.png"
+                pix.save(os.path.join(dir_salida, nombre))
+                conteo_por_preg[qnum] = n_actual + 1
+                guardadas.append((qnum, nombre))
+            return guardadas
+
+        for pidx, dests, rect in slices_ctx:
+            for qnum, nombre in _guardar_recorte(dests, pidx, rect):
+                resultado.setdefault(qnum, {"figuras": [], "figurasAlternativas": {}})["figuras"].append(nombre)
+
+        for qnum in sorted(slices_preg.keys()):
+            q_slices = slices_preg[qnum]
+            tiene_pal = any(es_pal for sl in q_slices for _, _, es_pal in sl["alts"])
+            letras_cand = {lt for sl in q_slices for lt, _, es_pal in sl["alts"] if tiene_pal == es_pal}
+            alts_validas = tiene_pal or ("A" in letras_cand and "B" in letras_cand)
+
+            alt_previa: Optional[str] = None
+            pendientes_por_alt: Dict[Tuple[int, str], List[Any]] = {}
+
+            for sl in q_slices:
+                pidx = sl["page"]
+                alts_p = [
+                    (lt, r) for lt, r, es_pal in sl["alts"]
+                    if alts_validas and (es_pal if tiene_pal else True)
+                ]
+                if sl["figs"]:
+                    asignaciones = _asignar_figuras_de_pregunta(sl["figs"], alts_p, bloques_por_pag[pidx], alt_previa)
+                    for destino_alt, frect in asignaciones:
+                        if destino_alt is None:
+                            for _, nombre in _guardar_recorte([qnum], pidx, frect):
+                                resultado.setdefault(qnum, {"figuras": [], "figurasAlternativas": {}})["figuras"].append(nombre)
+                        else:
+                            pendientes_por_alt.setdefault((pidx, destino_alt), []).append(frect)
+                if alts_p:
+                    alt_previa = sorted(alts_p, key=lambda it: (it[1].y0, it[1].x0))[-1][0]
+
+            # Consolida los trazos asignados a la misma alternativa en un recorte limpio por letra
+            for letra in LETRAS:
+                for (pidx, lt), rects_lt in sorted(pendientes_por_alt.items()):
+                    if lt != letra:
+                        continue
+                    rect_lt = fitz.Rect(rects_lt[0])
+                    for rx in rects_lt[1:]:
+                        rect_lt = rect_lt | rx
+                    for _, nombre in _guardar_recorte([qnum], pidx, rect_lt):
+                        entry = resultado.setdefault(qnum, {"figuras": [], "figurasAlternativas": {}})
+                        entry["figurasAlternativas"].setdefault(letra, nombre)
+
     return resultado
 
 
@@ -833,7 +1062,7 @@ def procesar_examen(
         if q["numero"] in clave_dict:
             q["correcta"] = clave_dict[q["numero"]]
 
-    # Figuras (gráficos vectoriales o imágenes) recortadas por pregunta
+    # Figuras (gráficos vectoriales o imágenes) recortadas por enunciado y alternativa
     total_figuras = 0
     if dir_figuras:
         try:
@@ -841,12 +1070,20 @@ def procesar_examen(
         except Exception:
             por_pregunta = {}
         for q in preguntas:
-            if q["numero"] in por_pregunta:
-                q["figuras"] = por_pregunta[q["numero"]]
-                total_figuras += len(q["figuras"])
-                for l in list(q["alternativas"].keys()):
-                    if not q["alternativas"][l].strip():
-                        q["alternativas"][l] = f"(Ver imagen: Alternativa {l})"
+            info = por_pregunta.get(q["numero"])
+            if not info:
+                continue
+            figs_enun = info.get("figuras") or []
+            figs_alt = info.get("figurasAlternativas") or {}
+            if figs_enun:
+                q["figuras"] = figs_enun
+                total_figuras += len(figs_enun)
+            if figs_alt:
+                q["figurasAlternativas"] = figs_alt
+                total_figuras += len(figs_alt)
+            for l in list(q["alternativas"].keys()):
+                if not q["alternativas"][l].strip():
+                    q["alternativas"][l] = f"(Ver imagen: Alternativa {l})"
 
     # Guardar JSON si se indicó ruta
     if ruta_salida:

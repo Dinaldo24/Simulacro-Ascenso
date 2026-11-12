@@ -12,6 +12,9 @@ export class Opcion {
     @Column({ type: "text" })
     texto: string;
 
+    @Column({ type: "varchar", length: 100, nullable: true })
+    figura: string | null;
+
     @Column({ type: "boolean", default: false })
     esCorrecta: boolean;
 

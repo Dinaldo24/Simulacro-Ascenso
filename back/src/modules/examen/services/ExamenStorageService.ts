@@ -139,7 +139,13 @@ export async function procesarYGuardarExamen(params: SubirExamenParams): Promise
         await fs.rename(jsonTmp, resolverRutaSegura(anioDir, `${archivoBase}_preguntas.json`));
         const figurasFinal = dirFigurasExamen(anio, archivoBase);
         await fs.rm(figurasFinal, { recursive: true, force: true });
-        if (preguntas.some((q) => q.figuras?.length)) {
+        if (
+            preguntas.some(
+                (q) =>
+                    Boolean(q.figuras?.length) ||
+                    (Boolean(q.figurasAlternativas) && Object.keys(q.figurasAlternativas!).length > 0),
+            )
+        ) {
             await fs.rename(figurasTmp, figurasFinal);
         }
 

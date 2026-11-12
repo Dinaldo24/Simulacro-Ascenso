@@ -13,7 +13,11 @@ export interface PreguntaSimulador {
     contexto?: string;
     /** Rutas (autenticadas) de las figuras recortadas del cuadernillo. */
     figuras?: string[];
+    /** Mapa de letra de alternativa ("A".."E") -> ruta autenticada de su figura. */
+    figurasAlternativas?: Record<string, string>;
 }
+
+const RE_PLACEHOLDER_FIG_ALT = /^\(Ver imagen:\s*Alternativa\s+[A-E]\)$/i;
 
 export interface ExamenDisponible {
     anio: string;
@@ -432,21 +436,26 @@ export function setupExamenes() {
         const fbText = document.createElement("div");
         fbText.className = "simulador-feedback-text";
 
+        function formatOpcionResumen(op: string, conPrefijoOpcion: boolean): string {
+            const texto = getTextoOpcion(op);
+            const esGrafica = !texto || RE_PLACEHOLDER_FIG_ALT.test(texto);
+            if (!conPrefijoOpcion) {
+                return esGrafica ? "Alternativa gráfica" : texto;
+            }
+            return esGrafica ? `Opción ${op} (imagen)` : `Opción ${op}: ${texto}`;
+        }
+
         if (!tieneClave) {
-            const textoElegido = getTextoOpcion(letraElegida);
-            appendFeedbackRow(fbText, "simulador-feedback-row", "Tu respuesta:", `Opción ${letraElegida}: ${textoElegido}`);
+            appendFeedbackRow(fbText, "simulador-feedback-row", "Tu respuesta:", formatOpcionResumen(letraElegida, true));
             const note = document.createElement("div");
             note.className = "simulador-feedback-note";
             note.textContent = "Nota: Este examen aún no cuenta con clave oficial registrada para verificar automáticamente la respuesta.";
             fbText.append(note);
         } else if (esCorrecta) {
-            const textoCorrecto = getTextoOpcion(letraCorrecta);
-            appendFeedbackRow(fbText, "simulador-feedback-row", `Opción ${letraCorrecta}:`, textoCorrecto);
+            appendFeedbackRow(fbText, "simulador-feedback-row", `Opción ${letraCorrecta}:`, formatOpcionResumen(letraCorrecta, false));
         } else {
-            const textoElegido = getTextoOpcion(letraElegida);
-            const textoCorrecto = getTextoOpcion(letraCorrecta);
-            appendFeedbackRow(fbText, "simulador-feedback-row", "Tu respuesta:", `Opción ${letraElegida}: ${textoElegido}`);
-            appendFeedbackRow(fbText, "simulador-feedback-correct", "Respuesta correcta:", `Opción ${letraCorrecta}: ${textoCorrecto}`);
+            appendFeedbackRow(fbText, "simulador-feedback-row", "Tu respuesta:", formatOpcionResumen(letraElegida, true));
+            appendFeedbackRow(fbText, "simulador-feedback-correct", "Respuesta correcta:", formatOpcionResumen(letraCorrecta, true));
         }
 
         feedbackBox.append(fbHeader, fbText);
@@ -456,24 +465,43 @@ export function setupExamenes() {
 
     let figureBlobUrls: string[] = [];
 
+    function cargarImagenFigura(ruta: string, alt: string, className: string, errorText: string): HTMLImageElement {
+        const img = document.createElement("img");
+        img.className = className;
+        img.alt = alt;
+        img.loading = "lazy";
+        fetchBlobUrl(`${BACKEND_URL}${ruta}`)
+            .then((url) => {
+                figureBlobUrls.push(url);
+                img.src = url;
+            })
+            .catch(() => {
+                img.replaceWith(document.createTextNode(errorText));
+            });
+        return img;
+    }
+
+    function obtenerRutaFiguraAlternativa(q: PreguntaSimulador, letra: string): string | undefined {
+        const mapa = q.figurasAlternativas;
+        if (!mapa) return undefined;
+        if (mapa[letra]) return mapa[letra];
+        const encontrada = Object.entries(mapa).find(([k]) => k.toUpperCase() === letra.toUpperCase());
+        return encontrada?.[1];
+    }
+
     function crearFiguras(q: PreguntaSimulador): HTMLElement | null {
         if (!q.figuras || q.figuras.length === 0) return null;
         const box = document.createElement("div");
         box.className = "simulador-figures";
         q.figuras.forEach((ruta, i) => {
-            const img = document.createElement("img");
-            img.className = "simulador-figure";
-            img.alt = `Figura ${i + 1} de la pregunta ${q.numero}`;
-            img.loading = "lazy";
-            box.append(img);
-            fetchBlobUrl(`${BACKEND_URL}${ruta}`)
-                .then((url) => {
-                    figureBlobUrls.push(url);
-                    img.src = url;
-                })
-                .catch(() => {
-                    img.replaceWith(document.createTextNode("No se pudo cargar la figura."));
-                });
+            box.append(
+                cargarImagenFigura(
+                    ruta,
+                    `Figura ${i + 1} de la pregunta ${q.numero}`,
+                    "simulador-figure",
+                    "No se pudo cargar la figura.",
+                ),
+            );
         });
         return box;
     }
@@ -538,11 +566,34 @@ export function setupExamenes() {
                 letterBadge.className = "simulador-option-badge";
                 letterBadge.textContent = letra;
 
-                const textSpan = document.createElement("span");
-                textSpan.className = "simulador-option-text";
-                textSpan.textContent = q.alternativas[letra] || "";
+                const rutaFigAlt = obtenerRutaFiguraAlternativa(q, letra);
+                const textoOpcion = (q.alternativas[letra] || "").trim();
 
-                optLabel.append(radio, letterBadge, textSpan);
+                if (rutaFigAlt) {
+                    optLabel.classList.add("is-visual");
+                    const contentWrap = document.createElement("span");
+                    contentWrap.className = "simulador-option-content";
+                    if (textoOpcion && !RE_PLACEHOLDER_FIG_ALT.test(textoOpcion)) {
+                        const textSpan = document.createElement("span");
+                        textSpan.className = "simulador-option-text";
+                        textSpan.textContent = textoOpcion;
+                        contentWrap.append(textSpan);
+                    }
+                    contentWrap.append(
+                        cargarImagenFigura(
+                            rutaFigAlt,
+                            `Alternativa ${letra} de la pregunta ${q.numero}`,
+                            "simulador-option-figure",
+                            `No se pudo cargar la figura de la alternativa ${letra}.`,
+                        ),
+                    );
+                    optLabel.append(radio, letterBadge, contentWrap);
+                } else {
+                    const textSpan = document.createElement("span");
+                    textSpan.className = "simulador-option-text";
+                    textSpan.textContent = q.alternativas[letra] || "";
+                    optLabel.append(radio, letterBadge, textSpan);
+                }
                 optsContainer.append(optLabel);
             });
 
