@@ -1,11 +1,10 @@
 import { randomUUID } from "crypto";
-import { access, mkdir, unlink, writeFile } from "fs/promises";
+import { access, mkdir, readFile, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { FindOptionsWhere } from "typeorm";
 import { env } from "../../../config/env";
 import { AppDataSource } from "../../../database/data-source";
 import { resolverRutaSegura } from "../../../utils/storage";
-import { eliminarExamen } from "../../examen/services/ExamenCatalogoService";
 import { Documento } from "../entities/Documento";
 
 export const directorioDocumentos = env.storage.documentosDir;
@@ -25,12 +24,14 @@ export interface GuardarDocumentoParams {
     titulo?: string | undefined;
     curso?: string | undefined;
     anio?: string | undefined;
+    examenId?: number | null | undefined;
 }
 
 export interface ActualizarDocumentoParams {
     titulo?: string | undefined;
     curso?: string | null | undefined;
     anio?: string | null | undefined;
+    examenId?: number | null | undefined;
     paginaPortada?: number | undefined;
     pdfPreguntas?: ArchivoPdfEntrada | undefined;
     pdfRespuestas?: ArchivoPdfEntrada | undefined;
@@ -128,6 +129,7 @@ export async function guardarDocumento(params: GuardarDocumentoParams): Promise<
             }),
             curso,
             anio,
+            examenId: params.examenId ?? null,
             nombreOriginal,
             nombreArchivo,
             tipoMime: "application/pdf",
@@ -165,6 +167,7 @@ export async function buscarDocumento(id: number): Promise<Documento | null> {
 }
 
 export async function buscarDocumentosDeExamen(params: {
+    examenId?: number | null | undefined;
     anio: string;
     curso: string;
     archivoBase?: string | null | undefined;
@@ -175,21 +178,45 @@ export async function buscarDocumentosDeExamen(params: {
     const titulo = (params.titulo?.trim() || `Examen EBR ${curso} ${anio}`).slice(0, 150);
     const nombrePreguntas = params.archivoBase ? `${params.archivoBase}_Preguntas.pdf` : null;
 
+    const matchLegacy = nombrePreguntas
+        ? "(d.anio = :anio AND d.curso = :curso AND (d.titulo = :titulo OR d.nombreOriginal = :nombrePreguntas))"
+        : "(d.anio = :anio AND d.curso = :curso AND d.titulo = :titulo)";
+
     const consulta = AppDataSource.getRepository(Documento)
         .createQueryBuilder("d")
-        .where("d.anio = :anio", { anio })
-        .andWhere("d.curso = :curso", { curso });
+        .orderBy("d.id", "ASC");
 
-    if (nombrePreguntas) {
-        consulta.andWhere("(d.titulo = :titulo OR d.nombreOriginal = :nombrePreguntas)", {
+    if (params.examenId !== undefined && params.examenId !== null) {
+        consulta.where(`(d.examenId = :examenId OR (d.examenId IS NULL AND ${matchLegacy}))`, {
+            examenId: params.examenId,
+            anio,
+            curso,
             titulo,
-            nombrePreguntas,
+            ...(nombrePreguntas ? { nombrePreguntas } : {}),
         });
     } else {
-        consulta.andWhere("d.titulo = :titulo", { titulo });
+        consulta.where(matchLegacy, {
+            anio,
+            curso,
+            titulo,
+            ...(nombrePreguntas ? { nombrePreguntas } : {}),
+        });
     }
 
     return consulta.getMany();
+}
+
+export async function contarDocumentosPorExamenId(
+    examenId: number,
+    excluirDocumentoId?: number,
+): Promise<number> {
+    const consulta = AppDataSource.getRepository(Documento)
+        .createQueryBuilder("d")
+        .where("d.examenId = :examenId", { examenId });
+    if (excluirDocumentoId !== undefined) {
+        consulta.andWhere("d.id != :excluirId", { excluirId: excluirDocumentoId });
+    }
+    return consulta.getCount();
 }
 
 export async function obtenerRutaDocumentoExistente(
@@ -207,6 +234,15 @@ export async function obtenerRutaDocumentoExistente(
     } catch {
         return null;
     }
+}
+
+export async function leerBufferDocumento(
+    documento: Documento,
+    tipo: TipoArchivoDocumento = "preguntas",
+): Promise<Buffer | null> {
+    const ruta = await obtenerRutaDocumentoExistente(documento, tipo);
+    if (!ruta) return null;
+    return readFile(ruta);
 }
 
 export async function actualizarDocumento(
@@ -229,6 +265,9 @@ export async function actualizarDocumento(
         }
         if (cambios.anio !== undefined) {
             documento.anio = cambios.anio?.trim() || null;
+        }
+        if (cambios.examenId !== undefined) {
+            documento.examenId = cambios.examenId;
         }
         if (cambios.paginaPortada !== undefined) {
             documento.paginaPortada = cambios.paginaPortada;
@@ -273,10 +312,7 @@ export async function actualizarDocumento(
     }
 }
 
-export async function eliminarDocumento(
-    id: number,
-    opciones: { conservarExamen?: boolean } = {},
-): Promise<boolean> {
+export async function eliminarDocumento(id: number): Promise<boolean> {
     const repository = AppDataSource.getRepository(Documento);
     const documento = await repository.findOneBy({ id });
     if (!documento) {
@@ -285,11 +321,6 @@ export async function eliminarDocumento(
 
     await eliminarArchivoEnDisco(documento.nombreArchivo);
     await eliminarArchivoEnDisco(documento.respuestasNombreArchivo);
-
-    // Si está vinculado a un curso y año de examen, limpiar también los archivos del simulador
-    if (!opciones.conservarExamen && documento.curso && documento.anio && documento.titulo.startsWith("Examen EBR ")) {
-        await eliminarExamen(documento.anio, documento.curso).catch(() => undefined);
-    }
 
     await repository.remove(documento);
     return true;

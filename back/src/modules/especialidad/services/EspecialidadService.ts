@@ -12,6 +12,15 @@ export async function buscarEspecialidad(id: number): Promise<Especialidad | nul
     return AppDataSource.getRepository(Especialidad).findOneBy({ id });
 }
 
+export async function buscarEspecialidadPorNombre(nombre: string): Promise<Especialidad | null> {
+    const limpio = nombre.trim();
+    if (!limpio) return null;
+    return AppDataSource.getRepository(Especialidad)
+        .createQueryBuilder("e")
+        .where("LOWER(e.nombre) = LOWER(:nombre)", { nombre: limpio })
+        .getOne();
+}
+
 export async function crearEspecialidad(nombre: string): Promise<Especialidad> {
     const repo = AppDataSource.getRepository(Especialidad);
     const limpio = nombre.trim();

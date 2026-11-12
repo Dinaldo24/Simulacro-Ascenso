@@ -11,6 +11,7 @@ import {
     validarSegmentoAnio,
 } from "../../../utils/storage";
 import {
+    actualizarDocumento,
     buscarDocumentosDeExamen,
     eliminarDocumento,
     guardarDocumento,
@@ -36,9 +37,20 @@ export interface SubirExamenParams {
     anio: string;
     curso: string;
     especialidadId: number;
-    claveTexto?: string;
+    claveTexto?: string | undefined;
     pdfPreguntasBuffer: Buffer;
-    pdfRespuestasBuffer?: Buffer;
+    pdfRespuestasBuffer?: Buffer | undefined;
+    documentoExistenteId?: number | undefined;
+    sincronizarRepositorio?: boolean | undefined;
+}
+
+export interface ResultadoDesgloseExamen {
+    examenId: number;
+    anio: string;
+    curso: string;
+    totalPreguntas: number;
+    conRespuestas: number;
+    mensaje: string;
 }
 
 export class PythonDesgloseError extends Error {
@@ -49,16 +61,12 @@ export class PythonDesgloseError extends Error {
 }
 
 /**
- * Valida, desglosa con Python en un directorio temporal, guarda en MySQL y solo entonces
- * publica los archivos. Si algo falla no queda nada a medias en disco ni en la BD.
+ * Valida, desglosa con Python en un directorio temporal, guarda en MySQL y publica
+ * los archivos del examen sin tocar el Repositorio (`documentos`).
  */
-export async function procesarYGuardarExamen(params: SubirExamenParams): Promise<{
-    mensaje: string;
-    totalPreguntas: number;
-    conRespuestas: number;
-    anio: string;
-    curso: string;
-}> {
+export async function extraerYPublicarExamenSinRepositorio(
+    params: Omit<SubirExamenParams, "documentoExistenteId" | "sincronizarRepositorio">,
+): Promise<ResultadoDesgloseExamen & { archivoBase: string }> {
     const anio = validarSegmentoAnio(params.anio);
     const curso = params.curso.trim();
     if (!curso || curso.length > 100) {
@@ -147,34 +155,95 @@ export async function procesarYGuardarExamen(params: SubirExamenParams): Promise
             await fs.rename(figurasTmp, figurasFinal);
         }
 
-        // Copia en el Repositorio sin duplicar: reemplaza la anterior del mismo año + curso.
-        const titulo = `Examen EBR ${curso} ${anio}`.slice(0, 150);
-        const previos = await buscarDocumentosDeExamen({ anio, curso, archivoBase, titulo });
-        for (const previo of previos) {
-            await eliminarDocumento(previo.id, { conservarExamen: true });
-        }
-        await guardarDocumento({
-            nombreOriginal: `${archivoBase}_Preguntas.pdf`,
-            contenido: params.pdfPreguntasBuffer,
-            ...(params.pdfRespuestasBuffer
-                ? {
-                      respuestasNombreOriginal: `${archivoBase}_Respuestas.pdf`,
-                      respuestasContenido: params.pdfRespuestasBuffer,
-                  }
-                : {}),
-            titulo,
-            curso,
-            anio,
-        });
-
         return {
-            mensaje: `¡Examen desglosado con éxito! Se guardaron ${importado.total} preguntas y ${importado.conClave} claves correctas. El PDF también está en el Repositorio.`,
+            examenId: importado.examenId,
+            anio,
+            curso,
+            archivoBase,
             totalPreguntas: importado.total,
             conRespuestas: importado.conClave,
-            anio,
-            curso,
+            mensaje: `¡Examen desglosado con éxito! Se guardaron ${importado.total} preguntas y ${importado.conClave} claves correctas.`,
         };
     } finally {
         await fs.rm(tmpDir, { recursive: true, force: true });
     }
+}
+
+/**
+ * Valida, desglosa con Python en un directorio temporal, guarda en MySQL y publica
+ * los archivos. Cuando `sincronizarRepositorio` es true (por defecto), mantiene
+ * sincronizada una única fila vinculada en `documentos` vía `examenId`.
+ */
+export async function procesarYGuardarExamen(params: SubirExamenParams): Promise<ResultadoDesgloseExamen> {
+    const resultado = await extraerYPublicarExamenSinRepositorio(params);
+
+    if (params.documentoExistenteId !== undefined) {
+        await actualizarDocumento(params.documentoExistenteId, {
+            examenId: resultado.examenId,
+            curso: resultado.curso,
+        });
+    } else if (params.sincronizarRepositorio !== false) {
+        const titulo = `Examen EBR ${resultado.curso} ${resultado.anio}`.slice(0, 150);
+        const existentes = await buscarDocumentosDeExamen({
+            examenId: resultado.examenId,
+            anio: resultado.anio,
+            curso: resultado.curso,
+            archivoBase: resultado.archivoBase,
+            titulo,
+        });
+
+        const pdfPreguntasEntrada = {
+            nombreOriginal: `${resultado.archivoBase}_Preguntas.pdf`,
+            contenido: params.pdfPreguntasBuffer,
+        };
+        const pdfRespuestasEntrada = params.pdfRespuestasBuffer
+            ? {
+                  nombreOriginal: `${resultado.archivoBase}_Respuestas.pdf`,
+                  contenido: params.pdfRespuestasBuffer,
+              }
+            : undefined;
+
+        if (existentes.length > 0) {
+            const [principal, ...duplicados] = existentes;
+            await actualizarDocumento(principal!.id, {
+                anio: resultado.anio,
+                curso: resultado.curso,
+                examenId: resultado.examenId,
+                pdfPreguntas: pdfPreguntasEntrada,
+                ...(pdfRespuestasEntrada
+                    ? { pdfRespuestas: pdfRespuestasEntrada }
+                    : { eliminarRespuestas: true }),
+            });
+            for (const duplicado of duplicados) {
+                await eliminarDocumento(duplicado.id);
+            }
+        } else {
+            await guardarDocumento({
+                nombreOriginal: pdfPreguntasEntrada.nombreOriginal,
+                contenido: pdfPreguntasEntrada.contenido,
+                ...(pdfRespuestasEntrada
+                    ? {
+                          respuestasNombreOriginal: pdfRespuestasEntrada.nombreOriginal,
+                          respuestasContenido: pdfRespuestasEntrada.contenido,
+                      }
+                    : {}),
+                titulo,
+                curso: resultado.curso,
+                anio: resultado.anio,
+                examenId: resultado.examenId,
+            });
+        }
+    }
+
+    return {
+        examenId: resultado.examenId,
+        anio: resultado.anio,
+        curso: resultado.curso,
+        totalPreguntas: resultado.totalPreguntas,
+        conRespuestas: resultado.conRespuestas,
+        mensaje:
+            params.sincronizarRepositorio === false
+                ? resultado.mensaje
+                : `${resultado.mensaje} El PDF también está en el Repositorio.`,
+    };
 }

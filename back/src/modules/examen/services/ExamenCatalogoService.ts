@@ -304,16 +304,37 @@ export async function eliminarArchivosDeExamen(anio: string, archivoBase: string
     return eliminados;
 }
 
+export async function buscarExamenPorAnioYCurso(
+    anio: string,
+    curso: string,
+): Promise<Examen | null> {
+    const anioSeguro = validarSegmentoAnio(anio);
+    return AppDataSource.getRepository(Examen).findOneBy({
+        anio: anioSeguro,
+        curso: curso.trim(),
+    });
+}
+
+async function borrarExamenYArchivos(examen: Examen): Promise<boolean> {
+    const anioSeguro = examen.anio ? validarSegmentoAnio(examen.anio) : null;
+    const archivoBase = examen.archivoBase;
+    await AppDataSource.getRepository(Examen).remove(examen);
+    if (anioSeguro && archivoBase) await eliminarArchivosDeExamen(anioSeguro, archivoBase);
+    return true;
+}
+
 /** Borra el examen (cascada a preguntas/opciones) y sus archivos. Devuelve false si no existía. */
 export async function eliminarExamen(anio: string, curso: string): Promise<boolean> {
-    const anioSeguro = validarSegmentoAnio(anio);
-    const repo = AppDataSource.getRepository(Examen);
-    const examen = await repo.findOneBy({ anio: anioSeguro, curso: curso.trim() });
+    const examen = await buscarExamenPorAnioYCurso(anio, curso);
     if (!examen) return false;
-    const archivoBase = examen.archivoBase;
-    await repo.remove(examen);
-    if (archivoBase) await eliminarArchivosDeExamen(anioSeguro, archivoBase);
-    return true;
+    return borrarExamenYArchivos(examen);
+}
+
+/** Borra un examen por su ID junto con sus archivos en disco. */
+export async function eliminarExamenPorId(id: number): Promise<boolean> {
+    const examen = await AppDataSource.getRepository(Examen).findOneBy({ id });
+    if (!examen) return false;
+    return borrarExamenYArchivos(examen);
 }
 
 export interface RegistrarSimulacroParams {

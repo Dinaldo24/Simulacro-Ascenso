@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS `documentos` (
   `titulo` VARCHAR(150) NOT NULL DEFAULT '',
   `curso` VARCHAR(100) NULL,
   `anio` VARCHAR(50) NULL,
+  `examenId` INT NULL,
   `nombreOriginal` VARCHAR(255) NOT NULL,
   `nombreArchivo` VARCHAR(60) NOT NULL,
   `tipoMime` VARCHAR(100) NOT NULL DEFAULT 'application/pdf',
@@ -142,7 +143,10 @@ CREATE TABLE IF NOT EXISTS `documentos` (
   UNIQUE KEY `UQ_documentos_nombreArchivo` (`nombreArchivo`),
   UNIQUE KEY `UQ_documentos_respuestasNombreArchivo` (`respuestasNombreArchivo`),
   KEY `IDX_documentos_anio_curso` (`anio`, `curso`),
-  KEY `IDX_documentos_creadoEn` (`creadoEn`)
+  KEY `IDX_documentos_creadoEn` (`creadoEn`),
+  KEY `IDX_documentos_examenId` (`examenId`),
+  CONSTRAINT `FK_documentos_examen`
+    FOREIGN KEY (`examenId`) REFERENCES `examenes` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------

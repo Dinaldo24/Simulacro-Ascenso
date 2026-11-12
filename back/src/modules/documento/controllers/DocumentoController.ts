@@ -2,13 +2,15 @@ import { Request, Response } from "express";
 import { BadRequestError, NotFoundError } from "../../../utils/errors";
 import { obtenerIdPositivo } from "../../../utils/http";
 import { asegurarBufferPdf } from "../../../utils/storage";
+import {
+    actualizarDocumentoYSincronizar,
+    eliminarDocumentoYSincronizar,
+    subirDocumentoYSincronizar,
+} from "../../sync/ExamenDocumentoSync";
 import { Documento } from "../entities/Documento";
 import {
-    actualizarDocumento,
     ActualizarDocumentoParams,
     buscarDocumento,
-    eliminarDocumento,
-    guardarDocumento,
     listarDocumentos,
     obtenerRutaDocumentoExistente,
     TipoArchivoDocumento,
@@ -28,6 +30,7 @@ function representarDocumento(documento: Documento) {
         respuestas_tamano_bytes: documento.respuestasTamanio ?? null,
         curso: documento.curso,
         anio: documento.anio,
+        examen_id: documento.examenId ?? null,
         fecha_subida: documento.creadoEn.toISOString(),
         subido_por_nombres: "Administrador",
         subido_por_apellidos: "General",
@@ -139,7 +142,7 @@ export async function subirDocumentoController(req: Request, res: Response): Pro
     const curso = parseTextoOpcional(body.curso, "curso", 100) ?? undefined;
     const anio = parseTextoOpcional(body.anio, "anio", 50) ?? undefined;
 
-    const documento = await guardarDocumento({
+    const resultado = await subirDocumentoYSincronizar({
         nombreOriginal: pdfPreguntas.originalname,
         contenido: pdfPreguntas.buffer,
         ...(pdfRespuestas
@@ -154,8 +157,14 @@ export async function subirDocumentoController(req: Request, res: Response): Pro
     });
 
     res.status(201).json({
-        mensaje: "El PDF se agregó al repositorio.",
-        document: representarDocumento(documento),
+        mensaje: resultado.sincronizadoSimulador
+            ? `Documento guardado y sincronizado con Materiales y Simulación (${resultado.totalPreguntasDesglosadas} preguntas desglosadas).`
+            : "Documento guardado en el Repositorio (no se desglosó para Simulación).",
+        document: representarDocumento(resultado.documento),
+        sincronizado_simulador: resultado.sincronizadoSimulador,
+        ...(resultado.sincronizadoSimulador
+            ? { total_preguntas_desglosadas: resultado.totalPreguntasDesglosadas }
+            : {}),
     });
 }
 
@@ -250,14 +259,28 @@ export async function actualizarDocumentoController(req: Request, res: Response)
         throw new BadRequestError("Debes enviar al menos un campo o archivo para actualizar.");
     }
 
-    const actualizado = await actualizarDocumento(id, cambios);
-    if (!actualizado) {
+    const resultado = await actualizarDocumentoYSincronizar(id, cambios);
+    if (!resultado) {
         throw new NotFoundError("No se encontró el documento.");
     }
 
+    if (!resultado.resincronizado) {
+        res.json({
+            mensaje: "Documento actualizado correctamente.",
+            document: representarDocumento(resultado.documento),
+        });
+        return;
+    }
+
     res.json({
-        mensaje: "Documento actualizado correctamente.",
-        document: representarDocumento(actualizado),
+        mensaje: resultado.sincronizadoSimulador
+            ? `Documento actualizado y sincronizado con Materiales y Simulación (${resultado.totalPreguntasDesglosadas} preguntas desglosadas).`
+            : "Documento actualizado en el Repositorio (no se desglosó para Simulación).",
+        document: representarDocumento(resultado.documento),
+        sincronizado_simulador: resultado.sincronizadoSimulador,
+        ...(resultado.sincronizadoSimulador
+            ? { total_preguntas_desglosadas: resultado.totalPreguntasDesglosadas }
+            : {}),
     });
 }
 
@@ -267,7 +290,7 @@ export async function eliminarDocumentoController(req: Request, res: Response): 
         throw new BadRequestError("El id del documento no es válido.");
     }
 
-    if (!(await eliminarDocumento(id))) {
+    if (!(await eliminarDocumentoYSincronizar(id))) {
         throw new NotFoundError("No se encontró el documento.");
     }
     res.status(200).json({ mensaje: "Documento eliminado correctamente." });

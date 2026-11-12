@@ -4,7 +4,6 @@ import { obtenerParametroTexto } from "../../../utils/http";
 import { buscarEspecialidad } from "../../especialidad/services/EspecialidadService";
 import { ActorExamen } from "../services/ExamenCatalogoService";
 import {
-    eliminarExamen,
     finalizarSimulacro,
     listarExamenesDisponibles,
     listarSimulacrosHistorial,
@@ -16,6 +15,7 @@ import {
     registrarSimulacroHistorial,
     verificarRespuesta,
 } from "../services/ExamenStorageService";
+import { eliminarExamenYSincronizar } from "../../sync/ExamenDocumentoSync";
 
 function actorDe(req: Request): ActorExamen {
     return { role: req.usuario?.role, especialidadId: req.usuario?.especialidadId };
@@ -54,7 +54,7 @@ export async function eliminarExamenStorageController(
         throw new BadRequestError("Año y curso son obligatorios.");
     }
 
-    if (!(await eliminarExamen(anio, curso))) {
+    if (!(await eliminarExamenYSincronizar(anio, curso))) {
         throw new NotFoundError(`No se encontró el examen ${curso} (${anio}).`);
     }
     res.json({
