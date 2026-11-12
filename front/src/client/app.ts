@@ -669,7 +669,7 @@ uploadForm.addEventListener("submit", async (event) => {
             body: formData
         });
         if (response.status === 401) return;
-        const payload: unknown = await response.json();
+        const payload: unknown = await response.json().catch(() => null);
 
         if (!response.ok) {
             throw new Error(getResponseMessage(payload, "No se pudo subir el documento."));
@@ -710,6 +710,7 @@ setupAuthentication({
         resetAndCloseUploadForm();
         uploadToggle.hidden = true;
         closePdfPreview();
+        ++editDialogOpenToken;
         if (documentEditDialog.open) documentEditDialog.close();
         simulation.reset();
         examenes.reset();
