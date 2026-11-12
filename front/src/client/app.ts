@@ -225,7 +225,7 @@ const modules: Record<ModuleName, AppModule> = {
     },
     simulacion: {
         title: "Materiales",
-        description: "Consulta y descarga de cuadernillos oficiales de preguntas y respuestas en PDF."
+        description: "Sube exámenes en PDF para sincronizarlos o consulta y descarga los cuadernillos oficiales."
     },
     usuarios: {
         title: "Gestión de Usuarios",
@@ -246,8 +246,22 @@ let especialidadesCache: EspecialidadItem[] = [];
 let editingDocument: RepositoryDocument | null = null;
 let editDialogOpenToken = 0;
 
-const examenes = setupExamenes();
-const simulation = setupSimulation();
+const examenes = setupExamenes({
+    onSyncChange: () => {
+        void simulation.loadDocuments();
+        if (currentUserEsGestor) {
+            void repository.loadDocuments();
+        }
+    }
+});
+const simulation = setupSimulation({
+    onSyncChange: (anio: string, curso: string) => {
+        void examenes.loadExamenes(anio, curso);
+        if (currentUserEsGestor) {
+            void repository.loadDocuments();
+        }
+    }
+});
 const usuarios = setupUsuarios();
 const repository = setupRepository({
     onPreview: openPdfPreview,
@@ -324,11 +338,17 @@ function showAuthenticatedUser(user: AuthenticatedUser): void {
 
     // 3. Ocultar subida y eliminación de exámenes para Docentes y Alumnos
     const btnToggleSubirExamen = document.querySelector<HTMLElement>("#btn-toggle-subir-examen");
-    if (btnToggleSubirExamen) btnToggleSubirExamen.hidden = !esGestor;
-    const formSubirExamen = document.querySelector<HTMLElement>("#form-subir-examen");
-    if (formSubirExamen && !esGestor) formSubirExamen.hidden = true;
+    if (btnToggleSubirExamen) {
+        btnToggleSubirExamen.hidden = !esGestor;
+        if (!esGestor) btnToggleSubirExamen.setAttribute("aria-expanded", "false");
+    }
+    const formSubirExamen = document.querySelector<HTMLFormElement>("#form-subir-examen");
+    if (formSubirExamen && !esGestor) {
+        formSubirExamen.reset();
+        formSubirExamen.hidden = true;
+    }
     const btnEliminarExamen = document.querySelector<HTMLElement>("#examenes-btn-eliminar");
-    if (btnEliminarExamen && !esGestor) btnEliminarExamen.hidden = true;
+    if (btnEliminarExamen) btnEliminarExamen.hidden = !esGestor;
 
     if (esGestor) {
         void loadEspecialidadesForRepo();
@@ -462,6 +482,11 @@ async function openEditDialog(item: RepositoryDocument, focusTarget?: PdfTipo): 
     }
 }
 
+function syncMaterialsAndExams(): void {
+    void simulation.loadDocuments();
+    void examenes.loadExamenes();
+}
+
 async function deleteDocument(item: RepositoryDocument, button: HTMLButtonElement): Promise<void> {
     const confirmation = window.confirm(`¿Seguro que deseas eliminar "${item.titulo}" del repositorio?`);
 
@@ -476,14 +501,15 @@ async function deleteDocument(item: RepositoryDocument, button: HTMLButtonElemen
             method: "DELETE"
         });
         if (response.status === 401) return;
+        const payload: unknown = await response.json().catch(() => null);
 
         if (!response.ok) {
-            const payload: unknown = await response.json().catch(() => null);
             throw new Error(getResponseMessage(payload, "No se pudo eliminar el documento."));
         }
 
-        showRepositoryMessage("El documento se eliminó del repositorio.", "success");
+        showRepositoryMessage(getResponseMessage(payload, "El documento se eliminó del repositorio."), "success");
         await repository.loadDocuments();
+        syncMaterialsAndExams();
     } catch (error) {
         showRepositoryMessage(getErrorMessage(error), "error");
         button.disabled = false;
@@ -605,8 +631,9 @@ documentEditForm.addEventListener("submit", async (event) => {
         }
 
         documentEditDialog.close();
-        showRepositoryMessage("Documento actualizado correctamente.", "success");
+        showRepositoryMessage(getResponseMessage(payload, "Documento actualizado correctamente."), "success");
         await repository.loadDocuments();
+        syncMaterialsAndExams();
     } catch (error) {
         setAlert(documentEditAlert, getErrorMessage(error), "error");
     } finally {
@@ -677,8 +704,9 @@ uploadForm.addEventListener("submit", async (event) => {
 
         resetAndCloseUploadForm();
         uploadToggle.hidden = !canManageRepository;
-        showRepositoryMessage("El documento se agregó al repositorio.", "success");
+        showRepositoryMessage(getResponseMessage(payload, "El documento se agregó al repositorio."), "success");
         await repository.loadDocuments();
+        syncMaterialsAndExams();
     } catch (error) {
         showRepositoryMessage(getErrorMessage(error), "error");
     } finally {

@@ -1,4 +1,3 @@
-import { fetchEspecialidades, fillEspecialidadSelect } from "./especialidades.js";
 import { BACKEND_URL, authorizedFetch, esGestorSession, fetchBlobUrl } from "./session.js";
 import { populateSelect, sortYearsDesc } from "./year-select.js";
 
@@ -58,7 +57,11 @@ function setButtonLabel(button: HTMLButtonElement, text: string): void {
     }
 }
 
-export function setupExamenes() {
+export interface ExamenesCallbacks {
+    onSyncChange?: () => void;
+}
+
+export function setupExamenes(callbacks?: ExamenesCallbacks) {
     const anioSelect = requireElement<HTMLSelectElement>("#examenes-year");
     const cursoSelect = requireElement<HTMLSelectElement>("#examenes-course");
     const infoCard = requireElement<HTMLElement>("#examenes-info-card");
@@ -68,17 +71,8 @@ export function setupExamenes() {
     const btnEliminarExamen = document.querySelector<HTMLButtonElement>("#examenes-btn-eliminar");
     const message = requireElement<HTMLElement>("#examenes-message");
 
-    // Componentes para la subida y desglose automático de exámenes
-    const btnToggleSubir = document.querySelector<HTMLButtonElement>("#btn-toggle-subir-examen");
-    const formSubir = document.querySelector<HTMLFormElement>("#form-subir-examen");
-    const btnCancelarSubir = document.querySelector<HTMLButtonElement>("#btn-cancelar-subir-examen");
-    const btnEnviarSubir = document.querySelector<HTMLButtonElement>("#btn-enviar-subir-examen");
-    const loadingSubir = document.querySelector<HTMLElement>("#subir-examen-loading");
-
     function aplicarPermisosRol(): void {
         const gestor = esGestorSession();
-        if (btnToggleSubir) btnToggleSubir.hidden = !gestor;
-        if (formSubir && !gestor) formSubir.hidden = true;
         if (btnEliminarExamen) btnEliminarExamen.hidden = !gestor;
     }
     aplicarPermisosRol();
@@ -718,8 +712,13 @@ export function setupExamenes() {
                 anioSelect.value = targetAnio;
                 updateCursos();
                 if (preselectCurso) {
-                    cursoSelect.value = preselectCurso;
-                    updateExamenInfo();
+                    const matchingCourse = Array.from(cursoSelect.options).find(
+                        (opt) => opt.value.trim().toLowerCase() === preselectCurso.trim().toLowerCase()
+                    );
+                    if (matchingCourse) {
+                        cursoSelect.value = matchingCourse.value;
+                        updateExamenInfo();
+                    }
                 }
             } else {
                 populateSelect(cursoSelect, [], "Selecciona un año primero");
@@ -728,52 +727,6 @@ export function setupExamenes() {
             }
         } catch (error) {
             showMessage(error instanceof Error ? error.message : "Error al cargar exámenes", "error");
-        }
-    }
-
-    async function handleSubirExamen(event: Event): Promise<void> {
-        event.preventDefault();
-        if (!formSubir) return;
-
-        const formData = new FormData(formSubir);
-        const anio = String(formData.get("anio") || "").trim();
-        const especialidadSelect = formSubir.querySelector<HTMLSelectElement>("#subir-examen-curso");
-        const especialidadId = String(formData.get("especialidadId") || "").trim();
-        const curso = especialidadSelect?.selectedOptions[0]?.textContent?.trim() ?? "";
-
-        if (!anio || !especialidadId) {
-            showMessage("El año y la especialidad son requeridos.", "error");
-            return;
-        }
-
-        clearMessage();
-        if (loadingSubir) loadingSubir.hidden = false;
-        if (btnEnviarSubir) btnEnviarSubir.disabled = true;
-
-        try {
-            const response = await authorizedFetch(`${BACKEND_URL}/examenes-disponibles/subir`, {
-                method: "POST",
-                body: formData
-            });
-            if (response.status === 401) return;
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.mensaje || "Error al procesar el examen.");
-            }
-
-            formSubir.reset();
-            formSubir.hidden = true;
-            showMessage(result.mensaje || "¡Examen desglosado con éxito!", "success");
-
-            // Recargar lista y seleccionar automáticamente el nuevo examen
-            await loadExamenes(anio, curso);
-        } catch (error) {
-            showMessage(error instanceof Error ? error.message : "Error al subir y desglosar el examen", "error");
-        } finally {
-            if (loadingSubir) loadingSubir.hidden = true;
-            if (btnEnviarSubir) btnEnviarSubir.disabled = false;
         }
     }
 
@@ -806,11 +759,13 @@ export function setupExamenes() {
                 throw new Error(err.mensaje || "No se pudo eliminar el examen.");
             }
 
-            showMessage(`El examen de ${examenSeleccionado.curso} (${examenSeleccionado.anio}) y sus preguntas han sido eliminados por completo.`, "success");
+            const deletedLabel = `${examenSeleccionado.curso} (${examenSeleccionado.anio})`;
             examenSeleccionado = null;
             infoCard.hidden = true;
             simuladorContainer.hidden = true;
             await loadExamenes();
+            showMessage(`El examen de ${deletedLabel} y sus preguntas han sido eliminados por completo.`, "success");
+            callbacks?.onSyncChange?.();
         } catch (error) {
             showMessage(error instanceof Error ? error.message : "Error al eliminar el examen.", "error");
         } finally {
@@ -840,35 +795,6 @@ export function setupExamenes() {
         infoCard.scrollIntoView({ behavior: "smooth" });
     });
 
-    async function cargarEspecialidadesSubida(): Promise<void> {
-        const select = formSubir?.querySelector<HTMLSelectElement>("#subir-examen-curso");
-        if (!select) return;
-        try {
-            fillEspecialidadSelect(select, await fetchEspecialidades(), "Selecciona una especialidad");
-        } catch (error) {
-            showMessage(error instanceof Error ? error.message : "No se pudieron cargar las especialidades.", "error");
-        }
-    }
-
-    btnToggleSubir?.addEventListener("click", () => {
-        void cargarEspecialidadesSubida();
-        if (!formSubir) return;
-        formSubir.hidden = !formSubir.hidden;
-        btnToggleSubir.setAttribute("aria-expanded", String(!formSubir.hidden));
-        if (!formSubir.hidden) {
-            formSubir.scrollIntoView({ behavior: "smooth" });
-        }
-    });
-
-    btnCancelarSubir?.addEventListener("click", () => {
-        if (!formSubir) return;
-        formSubir.reset();
-        formSubir.hidden = true;
-        btnToggleSubir?.setAttribute("aria-expanded", "false");
-    });
-
-    formSubir?.addEventListener("submit", (e) => void handleSubirExamen(e));
-
     return {
         loadExamenes,
         reset: () => {
@@ -883,10 +809,6 @@ export function setupExamenes() {
             simuladorContainer.hidden = true;
             if (scoreboardStats) scoreboardStats.hidden = true;
             if (footerActions) footerActions.hidden = true;
-            if (formSubir) {
-                formSubir.reset();
-                formSubir.hidden = true;
-            }
             clearMessage();
         }
     };

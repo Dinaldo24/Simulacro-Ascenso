@@ -512,6 +512,12 @@ button {
     margin-bottom: 18px;
 }
 
+.repository-toolbar > div,
+.simulation-toolbar > div {
+    flex: 1 1 300px;
+    min-width: 0;
+}
+
 .repository-toolbar h2,
 .simulation-toolbar h2 {
     margin: 0;
@@ -2656,6 +2662,10 @@ button {
     .examenes-card,
     .simulador-shell {
         padding: 18px;
+    }
+
+    .simulation-toolbar #btn-toggle-subir-examen {
+        width: 100%;
     }
 
     .filters-surface {

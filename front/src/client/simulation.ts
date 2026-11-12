@@ -1,4 +1,5 @@
-import { BACKEND_URL, authorizedFetch, downloadProtectedFile, fetchBlobUrl } from "./session.js";
+import { fetchEspecialidades, fillEspecialidadSelect } from "./especialidades.js";
+import { BACKEND_URL, authorizedFetch, downloadProtectedFile, esGestorSession, fetchBlobUrl } from "./session.js";
 import { populateSelect, sortYearsDesc } from "./year-select.js";
 
 interface ExamenItem {
@@ -10,11 +11,15 @@ interface ExamenItem {
     respuestasPdfUrl: string | null;
 }
 
+export interface SimulationCallbacks {
+    onSyncChange?: (anio: string, curso: string) => void;
+}
+
 function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : "Ocurrió un error inesperado.";
 }
 
-export function setupSimulation() {
+export function setupSimulation(callbacks?: SimulationCallbacks) {
     const simulationYear = document.querySelector<HTMLSelectElement>("#simulation-year");
     const simulationCourse = document.querySelector<HTMLSelectElement>("#simulation-course");
     const simulationActions = document.querySelector<HTMLElement>("#simulation-exam-actions");
@@ -32,7 +37,40 @@ export function setupSimulation() {
     const simulationMessage = document.querySelector<HTMLElement>("#simulation-message");
     const simulationEmptyState = document.querySelector<HTMLElement>("#simulation-empty-state");
 
+    // Componentes para la subida y desglose automático de exámenes en Materiales
+    const btnToggleSubir = document.querySelector<HTMLButtonElement>("#btn-toggle-subir-examen");
+    const formSubir = document.querySelector<HTMLFormElement>("#form-subir-examen");
+    const btnCancelarSubir = document.querySelector<HTMLButtonElement>("#btn-cancelar-subir-examen");
+    const btnEnviarSubir = document.querySelector<HTMLButtonElement>("#btn-enviar-subir-examen");
+    const loadingSubir = document.querySelector<HTMLElement>("#subir-examen-loading");
+
     let examenesList: ExamenItem[] = [];
+
+    function aplicarPermisosRol(): void {
+        const gestor = esGestorSession();
+        if (btnToggleSubir) {
+            btnToggleSubir.hidden = !gestor;
+            if (!gestor) {
+                btnToggleSubir.setAttribute("aria-expanded", "false");
+            }
+        }
+        if (formSubir && !gestor) {
+            formSubir.reset();
+            formSubir.hidden = true;
+        }
+    }
+    aplicarPermisosRol();
+
+    function resetAndCloseSubirForm(): void {
+        if (formSubir) {
+            formSubir.reset();
+            formSubir.hidden = true;
+        }
+        if (loadingSubir) {
+            loadingSubir.hidden = true;
+        }
+        btnToggleSubir?.setAttribute("aria-expanded", "false");
+    }
 
     function showMessage(message: string, type: "error" | "success" | "info"): void {
         if (!simulationMessage) return;
@@ -212,7 +250,7 @@ export function setupSimulation() {
         if (simulationEmptyState) simulationEmptyState.hidden = true;
     }
 
-    async function loadDocuments(): Promise<void> {
+    async function loadDocuments(preselectAnio?: string, preselectCurso?: string): Promise<void> {
         clearMessage();
         try {
             const response = await authorizedFetch(`${BACKEND_URL}/examenes-disponibles`);
@@ -224,14 +262,31 @@ export function setupSimulation() {
 
             const data = await response.json();
             examenesList = data.examenes || [];
+            aplicarPermisosRol();
 
             const availableYears = sortYearsDesc(examenesList.map((e) => e.anio));
 
             populateSelect(simulationYear, availableYears, "Selecciona un año");
             if (simulationYear) simulationYear.disabled = availableYears.length === 0;
-            populateSelect(simulationCourse, [], "Selecciona un curso");
-            if (simulationCourse) simulationCourse.disabled = true;
-            updateSelectedMaterial();
+
+            const targetAnio = preselectAnio?.trim();
+            if (targetAnio && availableYears.includes(targetAnio) && simulationYear) {
+                simulationYear.value = targetAnio;
+                updateCourseOptions();
+                if (preselectCurso && simulationCourse) {
+                    const matchingCourse = Array.from(simulationCourse.options).find(
+                        (opt) => opt.value.trim().toLowerCase() === preselectCurso.trim().toLowerCase()
+                    );
+                    if (matchingCourse) {
+                        simulationCourse.value = matchingCourse.value;
+                        updateSelectedMaterial();
+                    }
+                }
+            } else {
+                populateSelect(simulationCourse, [], "Selecciona un curso");
+                if (simulationCourse) simulationCourse.disabled = true;
+                updateSelectedMaterial();
+            }
 
             if (availableYears.length === 0) {
                 showMessage("No hay materiales PDF cargados actualmente.", "info");
@@ -241,8 +296,90 @@ export function setupSimulation() {
         }
     }
 
+    async function cargarEspecialidadesSubida(): Promise<void> {
+        const select = formSubir?.querySelector<HTMLSelectElement>("#subir-examen-curso");
+        if (!select) return;
+        try {
+            fillEspecialidadSelect(select, await fetchEspecialidades(), "Selecciona una especialidad");
+        } catch (error) {
+            showMessage(getErrorMessage(error), "error");
+        }
+    }
+
+    async function handleSubirExamen(event: Event): Promise<void> {
+        event.preventDefault();
+        if (!formSubir) return;
+
+        const formData = new FormData(formSubir);
+        const anio = String(formData.get("anio") || "").trim();
+        const especialidadSelect = formSubir.querySelector<HTMLSelectElement>("#subir-examen-curso");
+        const especialidadId = String(formData.get("especialidadId") || "").trim();
+        const curso = especialidadSelect?.selectedOptions[0]?.textContent?.trim() ?? "";
+
+        if (!anio || !especialidadId) {
+            showMessage("El año y la especialidad son requeridos.", "error");
+            return;
+        }
+
+        clearMessage();
+        if (loadingSubir) loadingSubir.hidden = false;
+        if (btnEnviarSubir) btnEnviarSubir.disabled = true;
+        if (btnCancelarSubir) btnCancelarSubir.disabled = true;
+
+        try {
+            const response = await authorizedFetch(`${BACKEND_URL}/examenes-disponibles/subir`, {
+                method: "POST",
+                body: formData
+            });
+            if (response.status === 401) return;
+
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(
+                    (typeof result?.mensaje === "string" && result.mensaje) ||
+                    (typeof result?.message === "string" && result.message) ||
+                    "Error al procesar el examen."
+                );
+            }
+
+            resetAndCloseSubirForm();
+            await loadDocuments(anio, curso);
+            showMessage(
+                (typeof result?.mensaje === "string" && result.mensaje) || "¡Examen desglosado con éxito!",
+                "success"
+            );
+            callbacks?.onSyncChange?.(anio, curso);
+        } catch (error) {
+            showMessage(getErrorMessage(error), "error");
+        } finally {
+            if (loadingSubir) loadingSubir.hidden = true;
+            if (btnEnviarSubir) btnEnviarSubir.disabled = false;
+            if (btnCancelarSubir) btnCancelarSubir.disabled = false;
+        }
+    }
+
     simulationYear?.addEventListener("change", updateCourseOptions);
     simulationCourse?.addEventListener("change", updateSelectedMaterial);
+
+    btnToggleSubir?.addEventListener("click", () => {
+        if (!formSubir) return;
+        const shouldOpen = formSubir.hidden;
+        formSubir.hidden = !shouldOpen;
+        btnToggleSubir.setAttribute("aria-expanded", String(shouldOpen));
+        if (shouldOpen) {
+            clearMessage();
+            void cargarEspecialidadesSubida();
+            formSubir.scrollIntoView({ behavior: "smooth" });
+        }
+    });
+
+    btnCancelarSubir?.addEventListener("click", () => {
+        resetAndCloseSubirForm();
+        clearMessage();
+    });
+
+    formSubir?.addEventListener("submit", (e) => void handleSubirExamen(e));
 
     return {
         loadDocuments,
@@ -250,6 +387,8 @@ export function setupSimulation() {
             examenesList = [];
             closeViewer();
             if (simulationActions) simulationActions.hidden = true;
+            resetAndCloseSubirForm();
+            if (btnToggleSubir) btnToggleSubir.hidden = true;
             clearMessage();
         }
     };

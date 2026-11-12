@@ -9,8 +9,8 @@
     <title>Iniciar sesión | Juan Pablo Vizcardo y Guzmán</title>
 
     <link rel="icon" type="image/png" href="recursos/favicon.png">
-    <link rel="stylesheet" href="css/styles.css?v=f26_repo_dual_pdf">
-    <script src="js/compiled/app.js?v=v6_repo_dual_pdf" type="module"></script>
+    <link rel="stylesheet" href="css/styles.css?v=f27_mat_sync">
+    <script src="js/compiled/app.js?v=v7_mat_sync" type="module"></script>
 
 </head>
 
@@ -399,64 +399,7 @@
                                 <h2 id="examenes-heading">Simulación de Exámenes MINEDU</h2>
                                 <p>Selecciona el año y la especialidad para realizar el simulacro interactivo con calificación al finalizar.</p>
                             </div>
-                            <button class="button button--secondary" id="btn-toggle-subir-examen" type="button" hidden>
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                Subir y Desglosar Examen (PDF)
-                            </button>
                         </div>
-
-                        <!-- Formulario para Subir y Desglosar Automáticamente un Examen en PDF -->
-                        <form id="form-subir-examen" class="panel-card" hidden>
-                            <h3 class="panel-card-title">Ingresar Nuevo Examen Oficial</h3>
-                            <p class="panel-card-subtitle">Sube los PDFs del examen y el sistema extraerá automáticamente todas las preguntas, escenarios compartidos y alternativas para el simulador.</p>
-
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label for="subir-examen-anio">Año de la convocatoria *</label>
-                                    <select id="subir-examen-anio" name="anio" class="field-control" required>
-                                        <option value="2026" selected>2026</option>
-                                        <option value="2025">2025</option>
-                                        <option value="2024">2024</option>
-                                        <option value="2023">2023</option>
-                                        <option value="2022">2022</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="subir-examen-curso">Especialidad / Curso *</label>
-                                    <select id="subir-examen-curso" name="especialidadId" class="field-control" required>
-                                        <option value="">Selecciona una especialidad</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label for="subir-examen-preguntas">Cuadernillo de Preguntas (PDF) *</label>
-                                    <input type="file" id="subir-examen-preguntas" name="pdfPreguntas" class="field-control field-control--file" accept=".pdf" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="subir-examen-respuestas">Hoja de Respuestas (PDF) (Opcional)</label>
-                                    <input type="file" id="subir-examen-respuestas" name="pdfRespuestas" class="field-control field-control--file" accept=".pdf">
-                                </div>
-                            </div>
-
-                            <div class="form-group form-group--spaced">
-                                <label for="subir-examen-clave">O ingresar Clave de respuestas en texto (Opcional)</label>
-                                <input type="text" id="subir-examen-clave" name="claveTexto" class="field-control" placeholder="Ej: BBCACCABABBA... (una letra por pregunta si no tienes el PDF de respuestas)">
-                            </div>
-
-                            <div id="subir-examen-loading" class="loading-banner" role="status" aria-live="polite" hidden>
-                                <span class="spinner" aria-hidden="true"></span>
-                                <span>Desglosando el PDF y organizando preguntas y alternativas automáticamente...</span>
-                            </div>
-
-                            <div class="form-actions">
-                                <button type="button" class="button button--secondary" id="btn-cancelar-subir-examen">Cancelar</button>
-                                <button type="submit" class="button button--primary" id="btn-enviar-subir-examen">
-                                    Desglosar y Guardar en el Sistema
-                                </button>
-                            </div>
-                        </form>
 
                         <div class="simulation-filters filters-surface">
                             <div class="simulation-filter">
@@ -561,9 +504,71 @@
                         <div class="simulation-toolbar">
                             <div>
                                 <h2 id="simulation-heading">Materiales y Cuadernillos de Examen</h2>
-                                <p>Selecciona el año y curso para descargar los cuadernillos oficiales de preguntas y respuestas en PDF o consultarlos en el visor interactivo.</p>
+                                <p>Sube exámenes en PDF para sincronizarlos o consulta y descarga los cuadernillos oficiales.</p>
                             </div>
+                            <button class="button button--primary" id="btn-toggle-subir-examen" type="button" aria-expanded="false" hidden>
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Subir y Desglosar Examen (PDF)
+                            </button>
                         </div>
+
+                        <!-- Formulario para Subir y Desglosar Automáticamente un Examen en PDF -->
+                        <form id="form-subir-examen" class="panel-card" hidden>
+                            <h3 class="panel-card-title">Ingresar Nuevo Examen Oficial</h3>
+                            <p class="panel-card-subtitle">Sube los PDFs del examen y el sistema extraerá automáticamente todas las preguntas, escenarios compartidos y alternativas para Materiales, Simulación y Repositorio.</p>
+
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="subir-examen-anio">Año de la convocatoria *</label>
+                                    <select id="subir-examen-anio" name="anio" class="field-control" required>
+                                        <option value="2026" selected>2026</option>
+                                        <option value="2025">2025</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2023">2023</option>
+                                        <option value="2022">2022</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="subir-examen-curso">Especialidad / Curso *</label>
+                                    <select id="subir-examen-curso" name="especialidadId" class="field-control" required>
+                                        <option value="">Selecciona una especialidad</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="subir-examen-preguntas">Cuadernillo de Preguntas (PDF) *</label>
+                                    <input type="file" id="subir-examen-preguntas" name="pdfPreguntas" class="field-control field-control--file" accept=".pdf" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="subir-examen-respuestas">Hoja de Respuestas (PDF) (Opcional)</label>
+                                    <input type="file" id="subir-examen-respuestas" name="pdfRespuestas" class="field-control field-control--file" accept=".pdf">
+                                </div>
+                            </div>
+
+                            <div class="form-group form-group--spaced">
+                                <label for="subir-examen-clave">O ingresar Clave de respuestas en texto (Opcional)</label>
+                                <input type="text" id="subir-examen-clave" name="claveTexto" class="field-control" placeholder="Ej: BBCACCABABBA... (una letra por pregunta si no tienes el PDF de respuestas)">
+                            </div>
+
+                            <div id="subir-examen-loading" class="loading-banner" role="status" aria-live="polite" hidden>
+                                <span class="spinner" aria-hidden="true"></span>
+                                <span>Desglosando el PDF y organizando preguntas y alternativas automáticamente...</span>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="button" class="button button--secondary" id="btn-cancelar-subir-examen">Cancelar</button>
+                                <button type="submit" class="button button--primary" id="btn-enviar-subir-examen">
+                                    Desglosar y Guardar en el Sistema
+                                </button>
+                            </div>
+                        </form>
+
+                        <p class="simulation-message" id="simulation-message" role="status" aria-live="polite">
+                            Cargando cursos y años...
+                        </p>
+
                         <div class="simulation-filters">
                             <div class="simulation-filter">
                                 <label for="simulation-year">Año o grado</label>
@@ -626,9 +631,6 @@
                             </div>
                         </div>
 
-                        <p class="simulation-message" id="simulation-message" role="status" aria-live="polite">
-                            Cargando cursos y años...
-                        </p>
                         <div id="simulation-empty-state" hidden></div>
                         <div class="simulation-viewer" id="simulation-viewer" hidden>
                             <div class="simulation-viewer-header">
