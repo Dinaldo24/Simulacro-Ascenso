@@ -325,6 +325,79 @@ export interface RegistrarSimulacroParams {
     actor?: ActorExamen;
 }
 
+export interface ResultadoFinalizacionSimulacro {
+    tieneClave: boolean;
+    totalPreguntas: number;
+    aciertos: number;
+    desaciertos: number;
+    sinResponder: number;
+    puntaje: number;
+    claves: Record<string, string>;
+    intentoId: number | null;
+}
+
+function evaluarRespuestasExamen(
+    preguntas: Pregunta[],
+    detalleRespuestas: Record<string, string>,
+): {
+    totalPreguntas: number;
+    aciertos: number;
+    desaciertos: number;
+    sinResponder: number;
+    puntaje: number;
+    detalle: Record<string, string>;
+    claves: Record<string, string>;
+} {
+    let aciertos = 0;
+    let desaciertos = 0;
+    const detalle: Record<string, string> = {};
+    const claves: Record<string, string> = {};
+
+    for (const p of preguntas) {
+        const key = String(p.numero);
+        const correcta = p.opciones.find((o) => o.esCorrecta)?.letra?.trim().toUpperCase();
+        if (correcta) claves[key] = correcta;
+
+        const elegida = (detalleRespuestas[key] ?? "").trim().toUpperCase();
+        if (!elegida) continue;
+        detalle[key] = elegida;
+        if (!correcta) continue;
+        if (correcta === elegida) aciertos++;
+        else desaciertos++;
+    }
+
+    const totalPreguntas = preguntas.length;
+    const respondidas = Object.keys(detalle).length;
+    const sinResponder = Math.max(0, totalPreguntas - respondidas);
+    const puntaje = totalPreguntas > 0 ? Math.round((aciertos / totalPreguntas) * 20 * 100) / 100 : 0;
+
+    return { totalPreguntas, aciertos, desaciertos, sinResponder, puntaje, detalle, claves };
+}
+
+type EvaluacionSimulacro = ReturnType<typeof evaluarRespuestasExamen>;
+
+function guardarIntentoSimulacro(
+    examen: Examen,
+    datos: RegistrarSimulacroParams,
+    evalRes: EvaluacionSimulacro,
+): Promise<SimulacroDocente> {
+    const repo = AppDataSource.getRepository(SimulacroDocente);
+    return repo.save(
+        repo.create({
+            docenteId: datos.docenteId,
+            examenId: examen.id,
+            curso: examen.curso as string,
+            anio: examen.anio as string,
+            totalPreguntas: evalRes.totalPreguntas,
+            aciertos: evalRes.aciertos,
+            desaciertos: evalRes.desaciertos,
+            puntaje: evalRes.puntaje,
+            tiempoSegundos: Math.max(0, Math.floor(datos.tiempoSegundos) || 0),
+            detalleRespuestas: evalRes.detalle,
+        }),
+    );
+}
+
 /** Califica en el servidor: el cliente solo envía sus respuestas, nunca puntajes. */
 export async function registrarSimulacroHistorial(datos: RegistrarSimulacroParams): Promise<SimulacroDocente> {
     const examen = await buscarExamen(datos.anio, datos.curso, datos.actor);
@@ -335,34 +408,47 @@ export async function registrarSimulacroHistorial(datos: RegistrarSimulacroParam
         where: { examen: { id: examen.id } },
         relations: { opciones: true },
     });
-    let aciertos = 0;
-    let desaciertos = 0;
-    const detalle: Record<string, string> = {};
-    for (const p of preguntas) {
-        const elegida = (datos.detalleRespuestas[String(p.numero)] ?? "").trim().toUpperCase();
-        if (!elegida) continue;
-        detalle[String(p.numero)] = elegida;
-        const correcta = p.opciones.find((o) => o.esCorrecta)?.letra;
-        if (!correcta) continue;
-        if (correcta === elegida) aciertos++;
-        else desaciertos++;
+    const evalRes = evaluarRespuestasExamen(preguntas, datos.detalleRespuestas);
+    return guardarIntentoSimulacro(examen, datos, evalRes);
+}
+
+/** Finaliza el simulacro, califica todas las respuestas en bloque, guarda el intento si tiene clave y devuelve las claves oficiales. */
+export async function finalizarSimulacro(
+    datos: RegistrarSimulacroParams,
+): Promise<ResultadoFinalizacionSimulacro> {
+    const examen = await buscarExamen(datos.anio, datos.curso, datos.actor);
+    const preguntas = await AppDataSource.getRepository(Pregunta).find({
+        where: { examen: { id: examen.id } },
+        relations: { opciones: true },
+        order: { numero: "ASC" },
+    });
+    const evalRes = evaluarRespuestasExamen(preguntas, datos.detalleRespuestas);
+
+    if (!examen.tieneClave) {
+        return {
+            tieneClave: false,
+            totalPreguntas: evalRes.totalPreguntas,
+            aciertos: 0,
+            desaciertos: 0,
+            sinResponder: evalRes.sinResponder,
+            puntaje: 0,
+            claves: {},
+            intentoId: null,
+        };
     }
-    const total = preguntas.length;
-    const repo = AppDataSource.getRepository(SimulacroDocente);
-    return repo.save(
-        repo.create({
-            docenteId: datos.docenteId,
-            examenId: examen.id,
-            curso: examen.curso as string,
-            anio: examen.anio as string,
-            totalPreguntas: total,
-            aciertos,
-            desaciertos,
-            puntaje: total > 0 ? Math.round((aciertos / total) * 20 * 100) / 100 : 0,
-            tiempoSegundos: Math.max(0, Math.floor(datos.tiempoSegundos) || 0),
-            detalleRespuestas: detalle,
-        }),
-    );
+
+    const guardado = await guardarIntentoSimulacro(examen, datos, evalRes);
+
+    return {
+        tieneClave: true,
+        totalPreguntas: evalRes.totalPreguntas,
+        aciertos: evalRes.aciertos,
+        desaciertos: evalRes.desaciertos,
+        sinResponder: evalRes.sinResponder,
+        puntaje: evalRes.puntaje,
+        claves: evalRes.claves,
+        intentoId: guardado.id,
+    };
 }
 
 export async function listarSimulacrosHistorial(params: {

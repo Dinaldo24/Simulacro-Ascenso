@@ -1672,6 +1672,10 @@ button {
     background: var(--status-warning-bg);
 }
 
+.simulador-question-card.is-answered {
+    border-color: var(--color-navy-600);
+}
+
 .simulador-question-number {
     display: inline-block;
     margin-bottom: 8px;
@@ -1741,6 +1745,17 @@ button {
 .simulador-option-label:hover:not(.is-locked) {
     border-color: var(--color-navy-600);
     background: var(--surface-tint);
+}
+
+.simulador-option-label.is-selected {
+    border-color: var(--color-navy-700);
+    background: var(--surface-tint);
+    font-weight: 550;
+}
+
+.simulador-option-label.is-selected .simulador-option-badge {
+    color: #fff;
+    background: var(--color-navy-800);
 }
 
 .simulador-option-label:has(input:focus-visible) {
@@ -2808,4 +2823,40 @@ button {
     border-radius: 6px;
     padding: 6px;
     display: block;
+}
+
+.simulador-footer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 24px;
+    padding: 18px 22px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    background: var(--surface-subtle);
+}
+
+.simulador-footer-status {
+    color: var(--text-body);
+    font-size: 0.92rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.simulador-footer-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.simulador-feedback-box--unanswered {
+    border: 1px solid var(--status-warning-border);
+    color: var(--status-warning-text);
+    background: var(--status-warning-bg);
+}
+
+.simulador-feedback-box--unanswered .simulador-feedback-icon {
+    background: var(--status-warning-text);
 }

@@ -17,6 +17,17 @@ export interface PreguntaSimulador {
     figurasAlternativas?: Record<string, string>;
 }
 
+export interface ResultadoFinalizacionApi {
+    tieneClave: boolean;
+    totalPreguntas: number;
+    aciertos: number;
+    desaciertos: number;
+    sinResponder: number;
+    puntaje: number;
+    claves: Record<string, string>;
+    intentoId: number | null;
+}
+
 const RE_PLACEHOLDER_FIG_ALT = /^\(Ver imagen:\s*Alternativa\s+[A-E]\)$/i;
 
 export interface ExamenDisponible {
@@ -79,10 +90,15 @@ export function setupExamenes() {
     const simuladorResultado = requireElement<HTMLElement>("#examenes-simulador-resultado");
     const btnReiniciar = requireElement<HTMLButtonElement>("#examenes-btn-reiniciar");
     const btnCerrarSimulador = requireElement<HTMLButtonElement>("#examenes-btn-cerrar-simulador");
+    const footerActions = document.querySelector<HTMLElement>("#simulador-footer-actions");
+    const footerStatus = document.querySelector<HTMLElement>("#simulador-footer-status");
+    const btnFinalizar = document.querySelector<HTMLButtonElement>("#examenes-btn-finalizar");
+    const btnVerResumen = document.querySelector<HTMLButtonElement>("#examenes-btn-ver-resumen");
 
     // Scoreboard en vivo
     const progressText = document.querySelector<HTMLElement>("#scoreboard-progress-text");
     const progressBar = document.querySelector<HTMLElement>("#scoreboard-progress-bar");
+    const scoreboardStats = document.querySelector<HTMLElement>("#scoreboard-stats");
     const correctCountElem = document.querySelector<HTMLElement>("#scoreboard-correct-count");
     const incorrectCountElem = document.querySelector<HTMLElement>("#scoreboard-incorrect-count");
 
@@ -90,6 +106,10 @@ export function setupExamenes() {
     let examenSeleccionado: ExamenDisponible | null = null;
     let preguntasActuales: PreguntaSimulador[] = [];
     let respuestasUsuario: Record<number, string> = {};
+    let simulacroFinalizado = false;
+    let calificandoSimulacro = false;
+    let inicioSimulacroMs = Date.now();
+    let resultadoFinalServidor: ResultadoFinalizacionApi | null = null;
 
     function showMessage(msg: string, type: "error" | "success" | "info"): void {
         message.textContent = msg;
@@ -185,7 +205,22 @@ export function setupExamenes() {
     }
 
     function iniciarIntento(): void {
+        simulacroFinalizado = false;
+        calificandoSimulacro = false;
+        inicioSimulacroMs = Date.now();
+        resultadoFinalServidor = null;
+        preguntasActuales.forEach((q) => {
+            delete q.correcta;
+        });
         respuestasUsuario = {};
+        if (scoreboardStats) scoreboardStats.hidden = true;
+        if (footerActions) footerActions.hidden = preguntasActuales.length === 0;
+        if (btnVerResumen) btnVerResumen.hidden = true;
+        if (btnFinalizar) {
+            btnFinalizar.hidden = false;
+            btnFinalizar.disabled = false;
+            setButtonLabel(btnFinalizar, "Finalizar simulacro");
+        }
         actualizarScoreboard();
         renderSimuladorPreguntas();
         simuladorResultado.hidden = true;
@@ -195,23 +230,6 @@ export function setupExamenes() {
         const total = preguntasActuales.length;
         const contestadas = Object.keys(respuestasUsuario).length;
 
-        let aciertos = 0;
-        let desaciertos = 0;
-
-        preguntasActuales.forEach((q) => {
-            const resp = respuestasUsuario[q.numero];
-            if (resp) {
-                const letraCorrecta = (q.correcta || "").trim().toUpperCase();
-                if (letraCorrecta) {
-                    if (resp.trim().toUpperCase() === letraCorrecta) {
-                        aciertos++;
-                    } else {
-                        desaciertos++;
-                    }
-                }
-            }
-        });
-
         if (progressText) {
             progressText.textContent = `${contestadas} / ${total} respondidas`;
         }
@@ -219,33 +237,48 @@ export function setupExamenes() {
             const pct = total > 0 ? (contestadas / total) * 100 : 0;
             progressBar.style.width = `${pct}%`;
         }
-        if (correctCountElem) {
-            correctCountElem.textContent = String(aciertos);
-        }
-        if (incorrectCountElem) {
-            incorrectCountElem.textContent = String(desaciertos);
+        if (footerStatus) {
+            if (simulacroFinalizado) {
+                footerStatus.textContent = resultadoFinalServidor?.tieneClave
+                    ? `Simulacro finalizado: ${resultadoFinalServidor.aciertos} correctas de ${resultadoFinalServidor.totalPreguntas} (Nota: ${resultadoFinalServidor.puntaje.toFixed(1)} / 20)`
+                    : "Simulacro finalizado (este examen no tiene clave oficial registrada).";
+            } else {
+                footerStatus.textContent = total > 0 && contestadas === total
+                    ? `Todas las ${total} preguntas respondidas. Listo para finalizar.`
+                    : `${contestadas} / ${total} respondidas`;
+            }
         }
 
-        if (total > 0 && contestadas === total) {
-            mostrarResumenFinal(aciertos, desaciertos, total);
+        if (!simulacroFinalizado || !resultadoFinalServidor?.tieneClave) {
+            if (scoreboardStats) scoreboardStats.hidden = true;
+            return;
+        }
+
+        if (scoreboardStats) scoreboardStats.hidden = false;
+        if (correctCountElem) {
+            correctCountElem.textContent = String(resultadoFinalServidor.aciertos);
+        }
+        if (incorrectCountElem) {
+            incorrectCountElem.textContent = String(resultadoFinalServidor.desaciertos);
         }
     }
 
-    function mostrarResumenFinal(aciertos: number, desaciertos: number, total: number): void {
-        const tieneClave = preguntasActuales.some((q) => (q.correcta || "").trim() !== "");
-        if (!tieneClave) {
+    function mostrarResumenFinal(res: ResultadoFinalizacionApi): void {
+        if (!res.tieneClave) {
             simuladorResultado.replaceChildren();
             const aviso = document.createElement("p");
             aviso.className = "simulador-result-desc";
             aviso.textContent =
-                "Examen finalizado. Este examen no tiene clave de respuestas, por lo que no se calcula calificación ni se guarda en el historial.";
+                "Simulacro finalizado. Este examen aún no tiene clave oficial de respuestas, por lo que no se calcula calificación ni se guarda en el historial.";
             simuladorResultado.append(aviso);
             simuladorResultado.hidden = false;
             simuladorResultado.scrollIntoView({ behavior: "smooth" });
             return;
         }
-        const porcentaje = Math.round((aciertos / total) * 100);
-        const nota = ((aciertos / total) * 20).toFixed(1);
+
+        const total = res.totalPreguntas;
+        const porcentaje = total > 0 ? Math.round((res.aciertos / total) * 100) : 0;
+        const nota = res.puntaje.toFixed(1);
         const esAprobado = porcentaje >= 60;
 
         simuladorResultado.replaceChildren();
@@ -253,29 +286,37 @@ export function setupExamenes() {
         const title = document.createElement("h3");
         title.className = `simulador-result-title ${esAprobado ? "simulador-result-title--pass" : "simulador-result-title--retry"}`;
         title.textContent = esAprobado
-            ? "Excelente desempeño: examen completado con éxito"
-            : "Examen finalizado: continúa practicando";
+            ? "Excelente desempeño: simulacro completado con éxito"
+            : "Simulacro finalizado: revisa tus respuestas abajo";
 
         const desc = document.createElement("p");
         desc.className = "simulador-result-desc";
-        desc.textContent = `Has obtenido ${aciertos} de ${total} preguntas correctas (${porcentaje}% de efectividad). Calificación equivalente: ${nota} / 20.`;
+        desc.textContent = `Has obtenido ${res.aciertos} de ${total} preguntas correctas (${porcentaje}% de efectividad). Calificación equivalente: ${nota} / 20.`;
 
         const badgesContainer = document.createElement("div");
         badgesContainer.className = "simulador-summary-badges";
 
         const badgeAciertos = document.createElement("span");
         badgeAciertos.className = "badge badge--success";
-        badgeAciertos.textContent = `${aciertos} Correctas`;
+        badgeAciertos.textContent = `${res.aciertos} Correctas`;
 
         const badgeErrores = document.createElement("span");
         badgeErrores.className = "badge badge--danger";
-        badgeErrores.textContent = `${desaciertos} Incorrectas`;
+        badgeErrores.textContent = `${res.desaciertos} Incorrectas`;
+
+        badgesContainer.append(badgeAciertos, badgeErrores);
+
+        if (res.sinResponder > 0) {
+            const badgeSinResp = document.createElement("span");
+            badgeSinResp.className = "badge badge--warning";
+            badgeSinResp.textContent = `${res.sinResponder} Sin responder`;
+            badgesContainer.append(badgeSinResp);
+        }
 
         const badgeNota = document.createElement("span");
         badgeNota.className = `badge ${esAprobado ? "badge--success" : "badge--warning"}`;
         badgeNota.textContent = `Puntaje: ${nota} / 20 (${porcentaje}%)`;
-
-        badgesContainer.append(badgeAciertos, badgeErrores, badgeNota);
+        badgesContainer.append(badgeNota);
 
         const actions = document.createElement("div");
         actions.className = "simulador-result-actions";
@@ -293,61 +334,97 @@ export function setupExamenes() {
         simuladorResultado.append(title, desc, badgesContainer, actions);
         simuladorResultado.hidden = false;
         simuladorResultado.scrollIntoView({ behavior: "smooth" });
-
-        // Guardar automáticamente el resultado en el historial de la base de datos
-        if (examenSeleccionado) {
-            void authorizedFetch(`${BACKEND_URL}/examenes-disponibles/historial`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    // El servidor califica: solo se envían las respuestas elegidas.
-                    curso: examenSeleccionado.curso,
-                    anio: examenSeleccionado.anio,
-                    detalleRespuestas: respuestasUsuario,
-                }),
-            }).catch((err) => console.error("No se pudo guardar en historial:", err));
-        }
     }
 
-    async function responderPregunta(q: PreguntaSimulador, alternativaElegida: string, card: HTMLElement): Promise<void> {
-        if (!examenSeleccionado) return;
-        card.querySelectorAll<HTMLInputElement>("input[type=radio]").forEach((r) => {
-            r.disabled = true;
+    function seleccionarAlternativa(q: PreguntaSimulador, alternativaElegida: string, card: HTMLElement): void {
+        if (simulacroFinalizado || calificandoSimulacro) return;
+        respuestasUsuario[q.numero] = alternativaElegida;
+        card.classList.add("is-answered");
+        card.querySelectorAll<HTMLLabelElement>(".simulador-option-label").forEach((lbl) => {
+            const radio = lbl.querySelector<HTMLInputElement>("input[type=radio]");
+            lbl.classList.toggle("is-selected", Boolean(radio && radio.value === alternativaElegida));
         });
+        actualizarScoreboard();
+    }
+
+    async function finalizarSimulacroActual(): Promise<void> {
+        if (!examenSeleccionado || simulacroFinalizado || calificandoSimulacro) return;
+        const total = preguntasActuales.length;
+        const contestadas = Object.keys(respuestasUsuario).length;
+        if (total === 0) return;
+
+        if (contestadas === 0) {
+            showMessage("Marca al menos una respuesta antes de finalizar el simulacro.", "info");
+            return;
+        }
+        if (contestadas < total) {
+            const confirmar = window.confirm(
+                `Has respondido ${contestadas} de ${total} preguntas. ¿Deseas finalizar y calificar el simulacro ahora?`,
+            );
+            if (!confirmar) return;
+        }
+
+        clearMessage();
+        calificandoSimulacro = true;
+        if (btnFinalizar) {
+            btnFinalizar.disabled = true;
+            setButtonLabel(btnFinalizar, "Calificando simulacro...");
+        }
+
         try {
+            const tiempoSegundos = Math.max(0, Math.round((Date.now() - inicioSimulacroMs) / 1000));
             const response = await authorizedFetch(
-                `${BACKEND_URL}/examenes-disponibles/${encodeURIComponent(examenSeleccionado.anio)}/${encodeURIComponent(examenSeleccionado.curso)}/preguntas/${q.numero}/verificar`,
+                `${BACKEND_URL}/examenes-disponibles/${encodeURIComponent(examenSeleccionado.anio)}/${encodeURIComponent(examenSeleccionado.curso)}/finalizar`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ alternativa: alternativaElegida }),
+                    body: JSON.stringify({
+                        tiempoSegundos,
+                        detalleRespuestas: respuestasUsuario,
+                    }),
                 },
             );
-            if (!response.ok) throw new Error("No se pudo verificar la respuesta.");
-            const resultado = (await response.json()) as { correcta?: string };
-            q.correcta = resultado.correcta ?? "";
-        } catch (error) {
-            card.querySelectorAll<HTMLInputElement>("input[type=radio]").forEach((r) => {
-                r.disabled = false;
-                r.checked = false;
+            if (response.status === 401) return;
+            if (!response.ok) {
+                throw new Error("No se pudo calificar el simulacro. Inténtalo nuevamente.");
+            }
+
+            const resultado = (await response.json()) as ResultadoFinalizacionApi;
+            simulacroFinalizado = true;
+            resultadoFinalServidor = resultado;
+
+            preguntasActuales.forEach((q) => {
+                q.correcta = resultado.claves?.[String(q.numero)] ?? "";
+                const card = document.getElementById(`pregunta-card-${q.numero}`);
+                if (card) {
+                    mostrarResultadoPregunta(q, respuestasUsuario[q.numero] || "", card);
+                }
             });
-            showMessage(error instanceof Error ? error.message : "No se pudo verificar la respuesta.", "error");
-            return;
+
+            if (btnFinalizar) btnFinalizar.hidden = true;
+            if (btnVerResumen) btnVerResumen.hidden = false;
+            actualizarScoreboard();
+            mostrarResumenFinal(resultado);
+        } catch (error) {
+            showMessage(error instanceof Error ? error.message : "No se pudo finalizar el simulacro.", "error");
+            if (btnFinalizar) {
+                btnFinalizar.disabled = false;
+                setButtonLabel(btnFinalizar, "Finalizar simulacro");
+            }
+        } finally {
+            calificandoSimulacro = false;
         }
-        mostrarResultadoPregunta(q, alternativaElegida, card);
     }
 
     function mostrarResultadoPregunta(q: PreguntaSimulador, alternativaElegida: string, card: HTMLElement): void {
-        respuestasUsuario[q.numero] = alternativaElegida;
         const letraElegida = alternativaElegida.trim().toUpperCase();
         const letraCorrecta = (q.correcta || "").trim().toUpperCase();
         const tieneClave = letraCorrecta.length > 0;
-        const esCorrecta = tieneClave && letraElegida === letraCorrecta;
+        const respondida = letraElegida.length > 0;
+        const esCorrecta = tieneClave && respondida && letraElegida === letraCorrecta;
 
-        card.classList.remove("is-correct", "is-incorrect", "is-unanswered");
-        if (!tieneClave) {
+        card.classList.remove("is-answered", "is-correct", "is-incorrect", "is-unanswered");
+        if (!tieneClave || !respondida) {
             card.classList.add("is-unanswered");
         } else if (esCorrecta) {
             card.classList.add("is-correct");
@@ -357,13 +434,14 @@ export function setupExamenes() {
 
         const labels = card.querySelectorAll<HTMLLabelElement>(".simulador-option-label");
         labels.forEach((lbl) => {
+            lbl.classList.remove("is-selected", "opt-correct", "opt-incorrect", "opt-expected");
             lbl.classList.add("is-locked");
             const radio = lbl.querySelector<HTMLInputElement>("input[type=radio]");
             if (radio) {
                 radio.disabled = true;
                 const radioVal = (radio.value || "").trim().toUpperCase();
 
-                if (radioVal === letraElegida) {
+                if (respondida && radioVal === letraElegida) {
                     if (!tieneClave) {
                         lbl.classList.add("opt-expected");
                     } else if (esCorrecta) {
@@ -384,6 +462,8 @@ export function setupExamenes() {
         feedbackBox.className = `simulador-feedback-box ${
             !tieneClave
                 ? "simulador-feedback-box--info"
+                : !respondida
+                ? "simulador-feedback-box--unanswered"
                 : esCorrecta
                 ? "simulador-feedback-box--correct"
                 : "simulador-feedback-box--incorrect"
@@ -395,7 +475,7 @@ export function setupExamenes() {
         const fbIcon = document.createElement("span");
         fbIcon.className = "simulador-feedback-icon";
         fbIcon.setAttribute("aria-hidden", "true");
-        fbIcon.innerHTML = !tieneClave
+        fbIcon.innerHTML = !tieneClave || !respondida
             ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`
             : esCorrecta
             ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
@@ -403,7 +483,11 @@ export function setupExamenes() {
 
         const fbTitle = document.createElement("strong");
         fbTitle.textContent = !tieneClave
-            ? "Respuesta registrada"
+            ? respondida
+                ? "Respuesta registrada"
+                : "Pregunta sin responder"
+            : !respondida
+            ? "Pregunta sin responder"
             : esCorrecta
             ? "¡Respuesta correcta!"
             : "Respuesta incorrecta";
@@ -446,11 +530,15 @@ export function setupExamenes() {
         }
 
         if (!tieneClave) {
-            appendFeedbackRow(fbText, "simulador-feedback-row", "Tu respuesta:", formatOpcionResumen(letraElegida, true));
+            if (respondida) {
+                appendFeedbackRow(fbText, "simulador-feedback-row", "Tu respuesta:", formatOpcionResumen(letraElegida, true));
+            }
             const note = document.createElement("div");
             note.className = "simulador-feedback-note";
             note.textContent = "Nota: Este examen aún no cuenta con clave oficial registrada para verificar automáticamente la respuesta.";
             fbText.append(note);
+        } else if (!respondida) {
+            appendFeedbackRow(fbText, "simulador-feedback-correct", "Respuesta correcta:", formatOpcionResumen(letraCorrecta, true));
         } else if (esCorrecta) {
             appendFeedbackRow(fbText, "simulador-feedback-row", `Opción ${letraCorrecta}:`, formatOpcionResumen(letraCorrecta, false));
         } else {
@@ -460,7 +548,6 @@ export function setupExamenes() {
 
         feedbackBox.append(fbHeader, fbText);
         card.append(feedbackBox);
-        actualizarScoreboard();
     }
 
     let figureBlobUrls: string[] = [];
@@ -557,8 +644,8 @@ export function setupExamenes() {
                 radio.value = letra;
 
                 radio.addEventListener("change", () => {
-                    if (radio.checked && !respuestasUsuario[q.numero]) {
-                        void responderPregunta(q, letra, card);
+                    if (radio.checked) {
+                        seleccionarAlternativa(q, letra, card);
                     }
                 });
 
@@ -734,6 +821,14 @@ export function setupExamenes() {
         }
     });
 
+    btnFinalizar?.addEventListener("click", () => {
+        void finalizarSimulacroActual();
+    });
+
+    btnVerResumen?.addEventListener("click", () => {
+        simuladorResultado.scrollIntoView({ behavior: "smooth" });
+    });
+
     btnReiniciar.addEventListener("click", () => {
         iniciarIntento();
         simuladorQuestions.scrollIntoView({ behavior: "smooth" });
@@ -781,8 +876,13 @@ export function setupExamenes() {
             examenSeleccionado = null;
             preguntasActuales = [];
             respuestasUsuario = {};
+            simulacroFinalizado = false;
+            calificandoSimulacro = false;
+            resultadoFinalServidor = null;
             infoCard.hidden = true;
             simuladorContainer.hidden = true;
+            if (scoreboardStats) scoreboardStats.hidden = true;
+            if (footerActions) footerActions.hidden = true;
             if (formSubir) {
                 formSubir.reset();
                 formSubir.hidden = true;

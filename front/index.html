@@ -478,7 +478,7 @@
                             <div class="simulador-header">
                                 <div>
                                     <h2 id="examenes-simulador-header">Simulador</h2>
-                                    <p>Selecciona una alternativa por pregunta para comprobar tu respuesta al instante.</p>
+                                    <p>Marca una alternativa por pregunta y presiona «Finalizar simulacro» al terminar para ver tu calificación y correcciones.</p>
                                 </div>
                                 <div class="simulador-header-actions">
                                     <button id="examenes-btn-reiniciar" class="button button--secondary button--sm" type="button">
@@ -501,7 +501,7 @@
                                         <div id="scoreboard-progress-bar" class="scoreboard-fill"></div>
                                     </div>
                                 </div>
-                                <div class="scoreboard-stats">
+                                <div class="scoreboard-stats" id="scoreboard-stats" hidden>
                                     <div class="scoreboard-pill scoreboard-pill--correct">
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                         <span>Correctas: <strong id="scoreboard-correct-count">0</strong></span>
@@ -513,11 +513,24 @@
                                 </div>
                             </div>
 
-                            <!-- Cuadro de resumen final cuando se completan todas las preguntas -->
+                            <!-- Cuadro de resumen final cuando se finaliza el simulacro -->
                             <div id="examenes-simulador-resultado" class="simulador-results-box" hidden></div>
 
                             <!-- Listado de Preguntas -->
                             <div id="examenes-simulador-questions" class="simulador-questions"></div>
+
+                            <!-- Acción inferior para finalizar y calificar al terminar el simulacro -->
+                            <div id="simulador-footer-actions" class="simulador-footer-actions" hidden>
+                                <span id="simulador-footer-status" class="simulador-footer-status">0 / 0 respondidas</span>
+                                <div class="simulador-footer-buttons">
+                                    <button id="examenes-btn-ver-resumen" class="button button--secondary" type="button" hidden>
+                                        Ver resumen arriba
+                                    </button>
+                                    <button id="examenes-btn-finalizar" class="button button--primary" type="button">
+                                        Finalizar simulacro
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </section>
 

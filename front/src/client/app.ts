@@ -78,7 +78,7 @@ const modules: Record<ModuleName, AppModule> = {
     },
     examenes: {
         title: "Exámenes",
-        description: "Simulador interactivo de exámenes MINEDU con retroalimentación inmediata."
+        description: "Simulador interactivo de exámenes MINEDU con corrección al finalizar el intento."
     },
     simulacion: {
         title: "Simulación y Materiales",

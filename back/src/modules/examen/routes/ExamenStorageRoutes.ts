@@ -4,6 +4,7 @@ import { asyncHandler } from "../../../middlewares/asyncHandler";
 import { requerirAdminODirector } from "../../../middlewares/authMiddleware";
 import {
     eliminarExamenStorageController,
+    finalizarSimulacroController,
     listarExamenesDisponiblesController,
     listarHistorialController,
     obtenerFiguraExamenController,
@@ -40,6 +41,7 @@ examenStorageRoutes.post(
     "/:anio/:curso/preguntas/:numero/verificar",
     asyncHandler(verificarRespuestaController),
 );
+examenStorageRoutes.post("/:anio/:curso/finalizar", asyncHandler(finalizarSimulacroController));
 examenStorageRoutes.delete(
     "/:anio/:curso",
     requerirAdminODirector,

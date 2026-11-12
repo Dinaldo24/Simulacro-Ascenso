@@ -5,6 +5,7 @@ import { buscarEspecialidad } from "../../especialidad/services/EspecialidadServ
 import { ActorExamen } from "../services/ExamenCatalogoService";
 import {
     eliminarExamen,
+    finalizarSimulacro,
     listarExamenesDisponibles,
     listarSimulacrosHistorial,
     obtenerPreguntasExamen,
@@ -106,6 +107,17 @@ export async function subirExamenStorageController(req: Request, res: Response):
     }
 }
 
+function parseDetalleRespuestas(raw: unknown): Record<string, string> {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw new BadRequestError("Las respuestas del simulacro no son válidas.");
+    }
+    const respuestas: Record<string, string> = {};
+    for (const [numero, letra] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof letra === "string") respuestas[numero] = letra;
+    }
+    return respuestas;
+}
+
 export async function registrarHistorialController(req: Request, res: Response): Promise<void> {
     const docenteId = Number(req.usuario?.sub);
     if (!docenteId || !Number.isInteger(docenteId)) {
@@ -116,13 +128,7 @@ export async function registrarHistorialController(req: Request, res: Response):
     if (typeof curso !== "string" || !curso.trim() || (typeof anio !== "string" && typeof anio !== "number")) {
         throw new BadRequestError("Faltan datos obligatorios del simulacro.");
     }
-    if (typeof detalleRespuestas !== "object" || detalleRespuestas === null || Array.isArray(detalleRespuestas)) {
-        throw new BadRequestError("Las respuestas del simulacro no son válidas.");
-    }
-    const respuestas: Record<string, string> = {};
-    for (const [numero, letra] of Object.entries(detalleRespuestas as Record<string, unknown>)) {
-        if (typeof letra === "string") respuestas[numero] = letra;
-    }
+    const respuestas = parseDetalleRespuestas(detalleRespuestas);
     const tiempo = Number(tiempoSegundos ?? 0);
 
     // El puntaje y los aciertos se calculan en el servidor; el cliente no los envía.
@@ -139,6 +145,33 @@ export async function registrarHistorialController(req: Request, res: Response):
         mensaje: "Simulacro registrado en el historial.",
         intento: guardado,
     });
+}
+
+export async function finalizarSimulacroController(req: Request, res: Response): Promise<void> {
+    const docenteId = Number(req.usuario?.sub);
+    if (!docenteId || !Number.isInteger(docenteId)) {
+        throw new UnauthorizedError("Usuario no autenticado.");
+    }
+    const anio = obtenerParametroTexto(req, "anio");
+    const curso = obtenerParametroTexto(req, "curso");
+    if (!anio || !curso) {
+        throw new BadRequestError("Año y curso son obligatorios.");
+    }
+
+    const { tiempoSegundos, detalleRespuestas } = req.body ?? {};
+    const respuestas = parseDetalleRespuestas(detalleRespuestas);
+    const tiempo = Number(tiempoSegundos ?? 0);
+
+    const resultado = await finalizarSimulacro({
+        docenteId,
+        anio,
+        curso,
+        tiempoSegundos: Number.isFinite(tiempo) ? tiempo : 0,
+        detalleRespuestas: respuestas,
+        actor: actorDe(req),
+    });
+
+    res.status(resultado.tieneClave ? 201 : 200).json(resultado);
 }
 
 export async function listarHistorialController(req: Request, res: Response): Promise<void> {

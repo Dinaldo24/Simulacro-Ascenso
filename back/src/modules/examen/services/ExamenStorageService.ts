@@ -16,6 +16,7 @@ import { dirFigurasExamen, esPreguntaExtraida, importarExamen, PreguntaExtraida 
 
 export {
     eliminarExamen,
+    finalizarSimulacro,
     listarExamenesDisponibles,
     listarSimulacrosHistorial,
     obtenerPreguntasExamen,
