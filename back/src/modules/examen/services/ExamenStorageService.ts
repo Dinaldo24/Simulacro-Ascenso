@@ -3,15 +3,18 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import { promisify } from "util";
 import { env } from "../../../config/env";
-import { AppDataSource } from "../../../database/data-source";
 import { BadRequestError } from "../../../utils/errors";
 import {
+    asegurarBufferPdf,
     resolverRutaSegura,
     sanitizarCursoParaArchivo,
     validarSegmentoAnio,
 } from "../../../utils/storage";
-import { Documento } from "../../documento/entities/Documento";
-import { eliminarDocumento, guardarDocumento } from "../../documento/services/DocumentoService";
+import {
+    buscarDocumentosDeExamen,
+    eliminarDocumento,
+    guardarDocumento,
+} from "../../documento/services/DocumentoService";
 import { dirFigurasExamen, esPreguntaExtraida, importarExamen, PreguntaExtraida } from "./ExamenCatalogoService";
 
 export {
@@ -45,10 +48,6 @@ export class PythonDesgloseError extends Error {
     }
 }
 
-function esPdf(buffer: Buffer): boolean {
-    return buffer.subarray(0, 1024).includes(Buffer.from("%PDF-"));
-}
-
 /**
  * Valida, desglosa con Python en un directorio temporal, guarda en MySQL y solo entonces
  * publica los archivos. Si algo falla no queda nada a medias en disco ni en la BD.
@@ -65,11 +64,9 @@ export async function procesarYGuardarExamen(params: SubirExamenParams): Promise
     if (!curso || curso.length > 100) {
         throw new BadRequestError("El curso es obligatorio y no puede superar 100 caracteres.");
     }
-    if (!esPdf(params.pdfPreguntasBuffer)) {
-        throw new BadRequestError("El archivo de preguntas no es un PDF válido.");
-    }
-    if (params.pdfRespuestasBuffer && !esPdf(params.pdfRespuestasBuffer)) {
-        throw new BadRequestError("El archivo de respuestas no es un PDF válido.");
+    asegurarBufferPdf(params.pdfPreguntasBuffer, "El archivo de preguntas");
+    if (params.pdfRespuestasBuffer) {
+        asegurarBufferPdf(params.pdfRespuestasBuffer, "El archivo de respuestas");
     }
 
     const archivoBase = `${anio}_${sanitizarCursoParaArchivo(curso, true)}`;
@@ -151,14 +148,20 @@ export async function procesarYGuardarExamen(params: SubirExamenParams): Promise
         }
 
         // Copia en el Repositorio sin duplicar: reemplaza la anterior del mismo año + curso.
-        const titulo = `Examen EBR ${curso} ${anio}`;
-        const previos = await AppDataSource.getRepository(Documento).findBy({ anio, curso, titulo });
+        const titulo = `Examen EBR ${curso} ${anio}`.slice(0, 150);
+        const previos = await buscarDocumentosDeExamen({ anio, curso, archivoBase, titulo });
         for (const previo of previos) {
             await eliminarDocumento(previo.id, { conservarExamen: true });
         }
         await guardarDocumento({
             nombreOriginal: `${archivoBase}_Preguntas.pdf`,
             contenido: params.pdfPreguntasBuffer,
+            ...(params.pdfRespuestasBuffer
+                ? {
+                      respuestasNombreOriginal: `${archivoBase}_Respuestas.pdf`,
+                      respuestasContenido: params.pdfRespuestasBuffer,
+                  }
+                : {}),
             titulo,
             curso,
             anio,

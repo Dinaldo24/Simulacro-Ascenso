@@ -132,10 +132,15 @@ CREATE TABLE IF NOT EXISTS `documentos` (
   `nombreArchivo` VARCHAR(60) NOT NULL,
   `tipoMime` VARCHAR(100) NOT NULL DEFAULT 'application/pdf',
   `tamanio` INT UNSIGNED NOT NULL,
+  `respuestasNombreOriginal` VARCHAR(255) NULL,
+  `respuestasNombreArchivo` VARCHAR(60) NULL,
+  `respuestasTipoMime` VARCHAR(100) NULL,
+  `respuestasTamanio` INT UNSIGNED NULL,
   `paginaPortada` INT NOT NULL DEFAULT 1,
   `creadoEn` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   UNIQUE KEY `UQ_documentos_nombreArchivo` (`nombreArchivo`),
+  UNIQUE KEY `UQ_documentos_respuestasNombreArchivo` (`respuestasNombreArchivo`),
   KEY `IDX_documentos_anio_curso` (`anio`, `curso`),
   KEY `IDX_documentos_creadoEn` (`creadoEn`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

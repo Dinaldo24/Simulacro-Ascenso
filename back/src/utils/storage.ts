@@ -2,6 +2,20 @@ import fs from "fs/promises";
 import path from "path";
 import { BadRequestError } from "./errors";
 
+export const MAX_PDF_MB = 35;
+export const MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024;
+const PDF_SIGNATURE = Buffer.from("%PDF-");
+
+export function esBufferPdf(buffer: Buffer): boolean {
+    return buffer.subarray(0, 1029).includes(PDF_SIGNATURE);
+}
+
+export function asegurarBufferPdf(buffer: Buffer, etiqueta: string = "El archivo"): void {
+    if (!esBufferPdf(buffer)) {
+        throw new BadRequestError(`${etiqueta} no contiene una cabecera PDF válida.`);
+    }
+}
+
 export function resolverRutaSegura(baseDir: string, ...segmentos: string[]): string {
     const resolvedBase = path.resolve(baseDir);
     const resolvedTarget = path.resolve(resolvedBase, ...segmentos);

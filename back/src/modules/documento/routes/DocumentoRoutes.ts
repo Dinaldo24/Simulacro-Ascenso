@@ -2,33 +2,32 @@ import { Router } from "express";
 import multer from "multer";
 import { asyncHandler } from "../../../middlewares/asyncHandler";
 import { requerirAdminODirector } from "../../../middlewares/authMiddleware";
+import { MAX_PDF_BYTES } from "../../../utils/storage";
 import {
+    actualizarDocumentoController,
     descargarDocumentoController,
     eliminarDocumentoController,
     listarDocumentosController,
-    renombrarDocumentoController,
     subirDocumentoController,
     verDocumentoController,
 } from "../controllers/DocumentoController";
 
 const documentoRoutes = Router();
 
-const cargarPdf = multer({
+const cargarDocumentos = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 25 * 1024 * 1024, files: 1 },
-    fileFilter: (_req, archivo, callback) => {
-        const esPdf =
-            archivo.mimetype === "application/pdf" &&
-            archivo.originalname.toLowerCase().endsWith(".pdf");
-        callback(null, esPdf);
-    },
-});
+    limits: { fileSize: MAX_PDF_BYTES, files: 2 },
+}).fields([
+    { name: "pdfPreguntas", maxCount: 1 },
+    { name: "pdfRespuestas", maxCount: 1 },
+    { name: "pdf", maxCount: 1 },
+]);
 
 // Todo el módulo de Repositorio de documentos: SOLO Administrador o Director
 documentoRoutes.use(requerirAdminODirector);
 
-documentoRoutes.post("/", cargarPdf.single("pdf"), asyncHandler(subirDocumentoController));
-documentoRoutes.patch("/:id", asyncHandler(renombrarDocumentoController));
+documentoRoutes.post("/", cargarDocumentos, asyncHandler(subirDocumentoController));
+documentoRoutes.patch("/:id", cargarDocumentos, asyncHandler(actualizarDocumentoController));
 documentoRoutes.delete("/:id", asyncHandler(eliminarDocumentoController));
 documentoRoutes.get("/", asyncHandler(listarDocumentosController));
 documentoRoutes.get("/:id", asyncHandler(descargarDocumentoController));

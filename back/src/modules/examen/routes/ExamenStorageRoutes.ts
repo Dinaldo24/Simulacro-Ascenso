@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { asyncHandler } from "../../../middlewares/asyncHandler";
 import { requerirAdminODirector } from "../../../middlewares/authMiddleware";
+import { MAX_PDF_BYTES } from "../../../utils/storage";
 import {
     eliminarExamenStorageController,
     finalizarSimulacroController,
@@ -19,7 +20,7 @@ const examenStorageRoutes = Router();
 
 const uploadExamen = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 35 * 1024 * 1024 },
+    limits: { fileSize: MAX_PDF_BYTES },
 });
 
 examenStorageRoutes.get("/", asyncHandler(listarExamenesDisponiblesController));

@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { AppError } from "../utils/errors";
+import { MAX_PDF_MB } from "../utils/storage";
 
 function obtenerCodigoMySql(error: unknown): string | undefined {
     if (typeof error !== "object" || error === null) {
@@ -26,7 +27,7 @@ export function errorHandler(
     if (error instanceof Error && error.name === "MulterError") {
         const status = "code" in error && error.code === "LIMIT_FILE_SIZE" ? 413 : 400;
         res.status(status).json({
-            mensaje: status === 413 ? "El PDF no puede superar los 25 MB." : error.message,
+            mensaje: status === 413 ? `El PDF no puede superar los ${MAX_PDF_MB} MB.` : error.message,
         });
         return;
     }

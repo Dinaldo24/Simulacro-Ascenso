@@ -26,6 +26,18 @@ export class Documento {
     @Column({ type: "int", unsigned: true })
     tamanio: number;
 
+    @Column({ type: "varchar", length: 255, nullable: true })
+    respuestasNombreOriginal: string | null;
+
+    @Column({ type: "varchar", length: 60, unique: true, nullable: true })
+    respuestasNombreArchivo: string | null;
+
+    @Column({ type: "varchar", length: 100, nullable: true })
+    respuestasTipoMime: string | null;
+
+    @Column({ type: "int", unsigned: true, nullable: true })
+    respuestasTamanio: number | null;
+
     @Column({ type: "int", default: 1 })
     paginaPortada: number;
 
