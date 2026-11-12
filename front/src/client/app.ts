@@ -77,11 +77,11 @@ const modules: Record<ModuleName, AppModule> = {
         description: "Consulta y organiza los recursos educativos del colegio."
     },
     examenes: {
-        title: "Exámenes",
+        title: "Simulación",
         description: "Simulador interactivo de exámenes MINEDU con corrección al finalizar el intento."
     },
     simulacion: {
-        title: "Simulación y Materiales",
+        title: "Materiales",
         description: "Consulta y descarga de cuadernillos oficiales de preguntas y respuestas en PDF."
     },
     usuarios: {

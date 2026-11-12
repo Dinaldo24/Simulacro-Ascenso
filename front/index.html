@@ -263,16 +263,16 @@
                     </button>
                     <button class="module-link" type="button" data-module="simulacion">
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.5L19 7.5V19a2 2 0 0 1-2 2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span>Materiales</span>
+                    </button>
+                    <button class="module-link" type="button" data-module="examenes">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                             <path d="M16 7h3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                         <span>Simulación</span>
-                    </button>
-                    <button class="module-link" type="button" data-module="examenes">
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.5L19 7.5V19a2 2 0 0 1-2 2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        <span>Exámenes</span>
                     </button>
                     <button class="module-link" type="button" data-module="usuarios" id="module-btn-usuarios" hidden>
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -373,8 +373,8 @@
                     <section class="examenes-panel" id="examenes-panel" aria-labelledby="examenes-heading" hidden>
                         <div class="simulation-toolbar">
                             <div>
-                                <h2 id="examenes-heading">Exámenes de Docentes MINEDU</h2>
-                                <p>Selecciona el año y la especialidad para realizar la evaluación interactiva con retroalimentación inmediata.</p>
+                                <h2 id="examenes-heading">Simulación de Exámenes MINEDU</h2>
+                                <p>Selecciona el año y la especialidad para realizar el simulacro interactivo con calificación al finalizar.</p>
                             </div>
                             <button class="button button--secondary" id="btn-toggle-subir-examen" type="button" hidden>
                                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -456,8 +456,8 @@
                         <div class="examenes-card" id="examenes-info-card" hidden>
                             <div class="examenes-card-body">
                                 <div class="examenes-card-info">
-                                    <h3 id="examenes-selected-title">Examen</h3>
-                                    <p id="examenes-selected-desc">Evaluación interactiva tipo simulacro con validación inmediata de respuestas y sugerencias de estudio.</p>
+                                    <h3 id="examenes-selected-title">Simulación</h3>
+                                    <p id="examenes-selected-desc">Evaluación interactiva tipo simulacro con corrección y puntaje al finalizar el intento.</p>
                                 </div>
                                 <div class="examenes-card-actions">
                                     <button id="examenes-btn-eliminar" class="button button--danger" type="button">
@@ -556,24 +556,51 @@
                             </div>
                         </div>
 
-                        <!-- Acciones de Descarga y Visualización en Simulación -->
+                        <!-- Acciones de Visualización y Descarga de Materiales organizadas por filas -->
                         <div id="simulation-exam-actions" class="simulation-actions" hidden>
-                            <a id="simulation-btn-preguntas" class="button button--secondary" target="_blank" download>
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Descargar PDF de preguntas
-                            </a>
-                            <a id="simulation-btn-respuestas" class="button button--secondary" target="_blank" download>
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Descargar PDF de respuestas
-                            </a>
-                            <button id="simulation-btn-view-preguntas" class="button button--primary" type="button">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                Ver Preguntas en pantalla
-                            </button>
-                            <button id="simulation-btn-view-respuestas" class="button button--primary" type="button">
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                Ver Respuestas en pantalla
-                            </button>
+                            <div id="simulation-row-preguntas" class="material-row">
+                                <div class="material-row-info">
+                                    <span class="material-row-icon" aria-hidden="true">
+                                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.5L19 7.5V19a2 2 0 0 1-2 2Z"/></svg>
+                                    </span>
+                                    <div class="material-row-text">
+                                        <strong>Cuadernillo de Preguntas</strong>
+                                        <small>Examen oficial en formato PDF para leer en pantalla o descargar</small>
+                                    </div>
+                                </div>
+                                <div class="material-row-actions">
+                                    <button id="simulation-btn-view-preguntas" class="button button--primary button--sm" type="button">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                        Ver en pantalla
+                                    </button>
+                                    <a id="simulation-btn-preguntas" class="button button--secondary button--sm" target="_blank" download>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        Descargar PDF
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div id="simulation-row-respuestas" class="material-row">
+                                <div class="material-row-info">
+                                    <span class="material-row-icon" aria-hidden="true">
+                                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                    </span>
+                                    <div class="material-row-text">
+                                        <strong>Cuadernillo de Respuestas</strong>
+                                        <small>Clave oficial y respuestas en formato PDF</small>
+                                    </div>
+                                </div>
+                                <div class="material-row-actions">
+                                    <button id="simulation-btn-view-respuestas" class="button button--primary button--sm" type="button">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                        Ver en pantalla
+                                    </button>
+                                    <a id="simulation-btn-respuestas" class="button button--secondary button--sm" target="_blank" download>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                        Descargar PDF
+                                    </a>
+                                </div>
+                            </div>
                         </div>
 
                         <p class="simulation-message" id="simulation-message" role="status" aria-live="polite">

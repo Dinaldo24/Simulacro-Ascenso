@@ -18,6 +18,8 @@ export function setupSimulation() {
     const simulationYear = document.querySelector<HTMLSelectElement>("#simulation-year");
     const simulationCourse = document.querySelector<HTMLSelectElement>("#simulation-course");
     const simulationActions = document.querySelector<HTMLElement>("#simulation-exam-actions");
+    const rowPreguntas = document.querySelector<HTMLElement>("#simulation-row-preguntas");
+    const rowRespuestas = document.querySelector<HTMLElement>("#simulation-row-respuestas");
     const btnPreguntas = document.querySelector<HTMLAnchorElement>("#simulation-btn-preguntas");
     const btnRespuestas = document.querySelector<HTMLAnchorElement>("#simulation-btn-respuestas");
     const btnViewPreguntas = document.querySelector<HTMLButtonElement>("#simulation-btn-view-preguntas");
@@ -83,9 +85,19 @@ export function setupSimulation() {
             return;
         }
 
+        const hasPreguntas = Boolean(match.tienePreguntasPdf && match.preguntasPdfUrl);
+        const hasRespuestas = Boolean(match.tieneRespuestasPdf && match.respuestasPdfUrl);
+
+        if (rowPreguntas) {
+            rowPreguntas.hidden = !hasPreguntas;
+        }
+        if (rowRespuestas) {
+            rowRespuestas.hidden = !hasRespuestas;
+        }
+
         // Configurar botones de descarga y visualización
         if (btnPreguntas) {
-            if (match.tienePreguntasPdf && match.preguntasPdfUrl) {
+            if (hasPreguntas && match.preguntasPdfUrl) {
                 btnPreguntas.href = "#";
                 btnPreguntas.onclick = (e) => {
                     e.preventDefault();
@@ -98,7 +110,7 @@ export function setupSimulation() {
         }
 
         if (btnRespuestas) {
-            if (match.tieneRespuestasPdf && match.respuestasPdfUrl) {
+            if (hasRespuestas && match.respuestasPdfUrl) {
                 btnRespuestas.href = "#";
                 btnRespuestas.onclick = (e) => {
                     e.preventDefault();
@@ -111,7 +123,7 @@ export function setupSimulation() {
         }
 
         if (btnViewPreguntas) {
-            btnViewPreguntas.hidden = !match.tienePreguntasPdf || !match.preguntasPdfUrl;
+            btnViewPreguntas.hidden = !hasPreguntas;
             btnViewPreguntas.onclick = () => {
                 if (match.preguntasPdfUrl) {
                     abrirVisor(
@@ -123,7 +135,7 @@ export function setupSimulation() {
         }
 
         if (btnViewRespuestas) {
-            btnViewRespuestas.hidden = !match.tieneRespuestasPdf || !match.respuestasPdfUrl;
+            btnViewRespuestas.hidden = !hasRespuestas;
             btnViewRespuestas.onclick = () => {
                 if (match.respuestasPdfUrl) {
                     abrirVisor(
@@ -135,7 +147,7 @@ export function setupSimulation() {
         }
 
         if (simulationActions) {
-            simulationActions.hidden = false;
+            simulationActions.hidden = !hasPreguntas && !hasRespuestas;
         }
     }
 
@@ -198,7 +210,7 @@ export function setupSimulation() {
             if (response.status === 401) return;
 
             if (!response.ok) {
-                throw new Error("No se pudieron cargar los materiales para la simulación.");
+                throw new Error("No se pudieron cargar los materiales disponibles.");
             }
 
             const data = await response.json();
