@@ -9,8 +9,8 @@
     <title>Iniciar sesión | Juan Pablo Vizcardo y Guzmán</title>
 
     <link rel="icon" type="image/png" href="recursos/favicon.png">
-    <link rel="stylesheet" href="css/styles.css?v=f25_anios_y_tabla_repo">
-    <script src="js/compiled/app.js?v=v5_orden_anios" type="module"></script>
+    <link rel="stylesheet" href="css/styles.css?v=f26_repo_dual_pdf">
+    <script src="js/compiled/app.js?v=v6_repo_dual_pdf" type="module"></script>
 
 </head>
 
@@ -317,34 +317,58 @@
                                 <h2 id="repository-heading">Documentos PDF</h2>
                                 <p>Archivos educativos compartidos por el colegio.</p>
                             </div>
-                            <button class="button button--primary upload-toggle" id="upload-toggle" type="button" hidden>
+                            <button class="button button--primary upload-toggle" id="upload-toggle" type="button" aria-expanded="false" hidden>
                                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                                 Subir PDF
                             </button>
                         </div>
 
-                        <form class="upload-form" id="upload-form" hidden>
-                            <div class="upload-fields">
-                                <div class="upload-title-field">
-                                    <label for="document-title">Título del documento</label>
-                                    <input id="document-title" name="titulo" type="text" maxlength="150" placeholder="Ej. Material de Matemática" required>
+                        <form class="panel-card" id="upload-form" hidden>
+                            <h3 class="panel-card-title">Subir Documentos al Repositorio</h3>
+                            <p class="panel-card-subtitle">Sube el cuadernillo de preguntas y, opcionalmente, su hoja de respuestas en formato PDF (máximo 35 MB).</p>
+
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="document-year-select">Año o grado *</label>
+                                    <select id="document-year-select" class="field-control" required>
+                                        <option value="2026" selected>2026</option>
+                                        <option value="2025">2025</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2023">2023</option>
+                                        <option value="2022">2022</option>
+                                        <option value="__otro__">Otro año...</option>
+                                    </select>
+                                    <input id="document-year" name="anio" type="text" class="field-control field-control--custom" maxlength="50" placeholder="Ej. 2021 o 5.° grado" aria-label="Especificar otro año o grado" hidden>
                                 </div>
-                                <div class="upload-course-field">
-                                    <label for="document-course">Curso</label>
-                                    <input id="document-course" name="curso" type="text" maxlength="150" placeholder="Ej. Matemática" required>
-                                </div>
-                                <div class="upload-year-field">
-                                    <label for="document-year">Año o grado</label>
-                                    <input id="document-year" name="anio" type="text" maxlength="50" placeholder="Ej. 2022" required>
-                                </div>
-                                <div class="upload-file-field">
-                                    <label for="document-file">Archivo PDF (máximo 25 MB)</label>
-                                    <input id="document-file" name="pdf" type="file" accept=".pdf,application/pdf" required>
+                                <div class="form-group">
+                                    <label for="document-course-select">Especialidad / Curso *</label>
+                                    <select id="document-course-select" class="field-control" required>
+                                        <option value="">Selecciona una especialidad</option>
+                                        <option value="__otro__">Otro curso / especialidad...</option>
+                                    </select>
+                                    <input id="document-course" name="curso" type="text" class="field-control field-control--custom" maxlength="150" placeholder="Ej. Ciencia y Tecnología" aria-label="Especificar otro curso o especialidad" hidden>
                                 </div>
                             </div>
-                            <div class="upload-form-actions">
-                                <button class="button button--secondary upload-cancel" id="upload-cancel" type="button">Cancelar</button>
-                                <button class="button button--primary upload-submit" id="upload-submit" type="submit">Guardar PDF</button>
+
+                            <div class="form-group form-group--spaced">
+                                <label for="document-title">Título del documento (Opcional)</label>
+                                <input id="document-title" name="titulo" type="text" class="field-control" maxlength="150" placeholder="Opcional — se genera automáticamente si se omite (ej. Material Matemática 2026)">
+                            </div>
+
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="document-file-preguntas">Cuadernillo de Preguntas (PDF) *</label>
+                                    <input id="document-file-preguntas" name="pdfPreguntas" type="file" class="field-control field-control--file" accept=".pdf,application/pdf" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="document-file-respuestas">Hoja de Respuestas (PDF) (Opcional)</label>
+                                    <input id="document-file-respuestas" name="pdfRespuestas" type="file" class="field-control field-control--file" accept=".pdf,application/pdf">
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="button button--secondary" id="upload-cancel" type="button">Cancelar</button>
+                                <button class="button button--primary" id="upload-submit" type="submit">Guardar Documentos</button>
                             </div>
                         </form>
 
@@ -353,17 +377,16 @@
                             <table class="repo-table">
                                 <thead>
                                     <tr>
-                                        <th class="col-icon">Tipo</th>
-                                        <th class="col-doc">Nombre</th>
+                                        <th class="col-pdf-preguntas">PDF de Preguntas</th>
+                                        <th class="col-pdf-respuestas">PDF de Respuestas</th>
                                         <th class="col-course">Curso</th>
                                         <th class="col-year">Año</th>
-                                        <th class="col-download">Descargar</th>
-                                        <th class="col-actions">Acciones</th>
+                                        <th class="col-actions" id="repo-col-actions-header">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="document-list" aria-live="polite">
                                     <tr>
-                                        <td colspan="6" class="repo-table-loading">Cargando documentos...</td>
+                                        <td colspan="5" class="repo-table-loading">Cargando documentos...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -735,6 +758,65 @@
                 </button>
             </div>
             <iframe class="pdf-preview-frame" id="pdf-preview-frame" title="Contenido del PDF" src="about:blank"></iframe>
+        </dialog>
+
+        <dialog class="document-edit-dialog" id="document-edit-dialog" aria-labelledby="document-edit-title">
+            <div class="pdf-preview-header">
+                <h2 id="document-edit-title">Editar documento</h2>
+                <button class="pdf-preview-close" id="document-edit-close" type="button" aria-label="Cerrar ventana">
+                    <span aria-hidden="true">×</span>
+                </button>
+            </div>
+            <form class="modal-body" id="document-edit-form" novalidate>
+                <div class="repository-alert" id="document-edit-alert" role="status" aria-live="polite" hidden></div>
+
+                <div class="form-group">
+                    <label for="edit-document-title">Título del documento *</label>
+                    <input id="edit-document-title" name="titulo" type="text" class="field-control" maxlength="150" required>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="edit-document-year-select">Año o grado *</label>
+                        <select id="edit-document-year-select" class="field-control" required>
+                            <option value="">Selecciona un año</option>
+                            <option value="2026">2026</option>
+                            <option value="2025">2025</option>
+                            <option value="2024">2024</option>
+                            <option value="2023">2023</option>
+                            <option value="2022">2022</option>
+                            <option value="__otro__">Otro año...</option>
+                        </select>
+                        <input id="edit-document-year" name="anio" type="text" class="field-control field-control--custom" maxlength="50" placeholder="Ej. 2021 o 5.° grado" aria-label="Especificar otro año o grado" hidden>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-document-course-select">Especialidad / Curso *</label>
+                        <select id="edit-document-course-select" class="field-control" required>
+                            <option value="">Selecciona una especialidad</option>
+                            <option value="__otro__">Otro curso / especialidad...</option>
+                        </select>
+                        <input id="edit-document-course" name="curso" type="text" class="field-control field-control--custom" maxlength="150" placeholder="Ej. Ciencia y Tecnología" aria-label="Especificar otro curso o especialidad" hidden>
+                    </div>
+                </div>
+
+                <div class="form-grid form-group--spaced">
+                    <div class="form-group">
+                        <label for="edit-document-file-preguntas">Cuadernillo de Preguntas (PDF)</label>
+                        <small class="modal-help modal-help--top" id="edit-document-preguntas-current"></small>
+                        <input id="edit-document-file-preguntas" name="pdfPreguntas" type="file" class="field-control field-control--file" accept=".pdf,application/pdf">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-document-file-respuestas">Hoja de Respuestas (PDF) (Opcional)</label>
+                        <small class="modal-help modal-help--top" id="edit-document-respuestas-current"></small>
+                        <input id="edit-document-file-respuestas" name="pdfRespuestas" type="file" class="field-control field-control--file" accept=".pdf,application/pdf">
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="button button--secondary" id="document-edit-cancel" type="button">Cancelar</button>
+                    <button class="button button--primary" id="document-edit-submit" type="submit">Guardar cambios</button>
+                </div>
+            </form>
         </dialog>
 
         <dialog class="cover-editor-dialog" id="cover-editor-dialog" aria-labelledby="cover-editor-title">

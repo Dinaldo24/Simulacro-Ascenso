@@ -146,6 +146,14 @@ button {
     font-size: 0.8rem;
 }
 
+.button--xs {
+    min-height: 30px;
+    padding: 0 10px;
+    gap: 5px;
+    border-radius: var(--radius-sm);
+    font-size: 0.76rem;
+}
+
 .button--primary {
     border-color: var(--btn-primary-bg);
     color: var(--btn-primary-text);
@@ -521,7 +529,6 @@ button {
 }
 
 /* Formularios y controles compartidos */
-.upload-form,
 .panel-card {
     margin: 18px 0;
     padding: 24px;
@@ -545,7 +552,6 @@ button {
     line-height: 1.5;
 }
 
-.upload-fields,
 .form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -561,16 +567,6 @@ button {
     margin-bottom: 0;
 }
 
-.upload-title-field,
-.upload-course-field,
-.upload-year-field,
-.upload-file-field {
-    display: grid;
-    align-content: start;
-    gap: 7px;
-}
-
-.upload-fields label,
 .panel-card .form-group label,
 .modal-body .form-group label {
     display: block;
@@ -580,14 +576,6 @@ button {
     font-weight: 600;
 }
 
-.upload-fields label {
-    margin-bottom: 0;
-}
-
-.upload-title-field input,
-.upload-course-field input,
-.upload-year-field input,
-.upload-file-field input,
 .field-control {
     width: 100%;
     min-height: 42px;
@@ -600,16 +588,16 @@ button {
     transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
+.field-control--custom {
+    margin-top: 8px;
+}
+
 .field-control--file {
     padding: 8px 10px;
     border-style: dashed;
     background-color: var(--surface-subtle);
 }
 
-.upload-title-field input:focus-visible,
-.upload-course-field input:focus-visible,
-.upload-year-field input:focus-visible,
-.upload-file-field input:focus-visible,
 .field-control:focus-visible,
 .usuarios-search-input:focus-visible {
     border-color: var(--color-navy-600);
@@ -617,7 +605,6 @@ button {
     box-shadow: 0 0 0 3px rgb(18 52 90 / 14%);
 }
 
-.upload-form-actions,
 .form-actions {
     display: flex;
     justify-content: flex-end;
@@ -673,9 +660,32 @@ button {
 }
 
 .pdf-preview-dialog::backdrop,
-.cover-editor-dialog::backdrop {
+.cover-editor-dialog::backdrop,
+.document-edit-dialog::backdrop {
     background: rgb(10 24 45 / 68%);
     backdrop-filter: blur(3px);
+}
+
+.document-edit-dialog {
+    width: min(640px, calc(100vw - 32px));
+    max-width: none;
+    max-height: min(90vh, 860px);
+    padding: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-radius: 14px;
+    background: var(--surface-card);
+    box-shadow: 0 24px 70px rgb(8 25 52 / 30%);
+}
+
+.document-edit-dialog .repository-alert {
+    margin: 0 0 16px;
+}
+
+.modal-help--top {
+    margin-top: 0;
+    margin-bottom: 6px;
 }
 
 .pdf-preview-header {
@@ -2012,7 +2022,7 @@ button {
 
 .repo-table {
     width: 100%;
-    min-width: 760px;
+    min-width: 820px;
     border-collapse: collapse;
     table-layout: fixed;
     text-align: left;
@@ -2026,7 +2036,7 @@ button {
 
 .repo-table th,
 .usuarios-table th {
-    padding: 13px 14px;
+    padding: 13px 12px;
     border: 0;
     color: var(--text-secondary);
     font-size: 0.75rem;
@@ -2039,7 +2049,7 @@ button {
 
 .repo-table td,
 .usuarios-table td {
-    padding: 13px 14px;
+    padding: 13px 12px;
     border-bottom: 1px solid #f1f5f9;
     vertical-align: middle;
 }
@@ -2054,25 +2064,18 @@ button {
     background: var(--surface-subtle);
 }
 
-.repo-table th.col-icon,
-.repo-table td.col-icon {
-    width: 56px;
-    padding-right: 6px;
-    padding-left: 12px;
-    text-align: center;
-}
-
-.repo-table th.col-doc,
-.repo-table td.col-doc {
+.repo-table th.col-pdf-preguntas,
+.repo-table td.col-pdf-preguntas,
+.repo-table th.col-pdf-respuestas,
+.repo-table td.col-pdf-respuestas {
     min-width: 0;
     overflow: hidden;
-    padding-left: 10px;
     text-align: left;
 }
 
 .repo-table th.col-course,
 .repo-table td.col-course {
-    width: 184px;
+    width: 146px;
     min-width: 0;
     overflow: hidden;
     text-align: left;
@@ -2080,7 +2083,7 @@ button {
 
 .repo-table th.col-year,
 .repo-table td.col-year {
-    width: 78px;
+    width: 72px;
     min-width: 0;
     overflow: hidden;
     padding-right: 10px;
@@ -2088,17 +2091,9 @@ button {
     text-align: center;
 }
 
-.repo-table th.col-download,
-.repo-table td.col-download {
-    width: 140px;
-    padding-right: 10px;
-    padding-left: 10px;
-    text-align: center;
-}
-
 .repo-table th.col-actions,
 .repo-table td.col-actions {
-    width: 140px;
+    width: 102px;
     padding-right: 12px;
     padding-left: 10px;
     text-align: center;
@@ -2126,43 +2121,47 @@ button {
     font-variant-numeric: tabular-nums;
 }
 
-.pdf-file-icon {
-    display: inline-flex;
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--radius-sm);
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    cursor: pointer;
-    transition: transform 150ms ease, background-color 150ms ease;
-}
-
-.pdf-file-icon:hover {
-    background: var(--surface-tint);
-    transform: scale(1.06);
-}
-
-.pdf-file-icon:focus-visible {
-    outline: 2px solid var(--color-navy-800);
-    outline-offset: 2px;
-}
-
-.doc-info-cell {
+.repo-pdf-cell {
     display: flex;
     min-width: 0;
     flex-direction: column;
     align-items: flex-start;
-    overflow: hidden;
+    gap: 8px;
+}
+
+.repo-pdf-meta {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.repo-pdf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.repo-pdf-empty {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.repo-pdf-missing {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    font-style: italic;
 }
 
 .doc-title-link {
     display: block;
     max-width: 100%;
     overflow: hidden;
-    margin: 0 0 3px;
+    margin: 0 0 2px;
     padding: 0;
     border: 0;
     color: var(--text-primary);
@@ -2171,7 +2170,7 @@ button {
     text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.93rem;
+    font-size: 0.9rem;
     font-weight: 600;
     transition: color 150ms ease;
 }
@@ -2192,7 +2191,7 @@ button {
     max-width: 100%;
     overflow: hidden;
     color: var(--text-muted);
-    font-size: 0.78rem;
+    font-size: 0.77rem;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -2222,16 +2221,6 @@ button {
 .repo-icon-btn:focus-visible {
     outline: 2px solid var(--color-navy-800);
     outline-offset: 2px;
-}
-
-.repo-icon-btn--view {
-    color: var(--text-secondary);
-}
-
-.repo-icon-btn--view:hover {
-    border-color: #94a3b8;
-    color: var(--color-navy-800);
-    background: var(--surface-tint);
 }
 
 .repo-icon-btn--edit {
@@ -2658,12 +2647,10 @@ button {
         margin-top: 26px;
     }
 
-    .upload-fields,
     .form-grid {
         grid-template-columns: 1fr;
     }
 
-    .upload-form,
     .panel-card,
     .simulation-panel,
     .examenes-card,
@@ -2681,7 +2668,8 @@ button {
         border-radius: 10px;
     }
 
-    .cover-editor-dialog {
+    .cover-editor-dialog,
+    .document-edit-dialog {
         width: calc(100vw - 16px);
         max-height: 92vh;
         border-radius: 10px;

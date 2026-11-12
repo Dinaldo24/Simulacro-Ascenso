@@ -126,7 +126,7 @@ export function setupSimulation() {
             btnViewPreguntas.hidden = !hasPreguntas;
             btnViewPreguntas.onclick = () => {
                 if (match.preguntasPdfUrl) {
-                    abrirVisor(
+                    void abrirVisor(
                         `Cuadernillo de Preguntas: ${match.curso} (${match.anio})`,
                         match.preguntasPdfUrl
                     );
@@ -138,7 +138,7 @@ export function setupSimulation() {
             btnViewRespuestas.hidden = !hasRespuestas;
             btnViewRespuestas.onclick = () => {
                 if (match.respuestasPdfUrl) {
-                    abrirVisor(
+                    void abrirVisor(
                         `Clave de Respuestas: ${match.curso} (${match.anio})`,
                         match.respuestasPdfUrl
                     );
@@ -154,6 +154,7 @@ export function setupSimulation() {
     let viewerBlobUrl: string | null = null;
     let viewerPath: string | null = null;
     let viewerFilename = "documento.pdf";
+    let viewerRequestId = 0;
 
     function revokeViewerBlob(): void {
         if (viewerBlobUrl) URL.revokeObjectURL(viewerBlobUrl);
@@ -170,8 +171,13 @@ export function setupSimulation() {
     }
 
     async function abrirVisor(titulo: string, path: string): Promise<void> {
+        const requestId = ++viewerRequestId;
         try {
             const blobUrl = await fetchBlobUrl(`${BACKEND_URL}${path}`);
+            if (requestId !== viewerRequestId) {
+                URL.revokeObjectURL(blobUrl);
+                return;
+            }
             revokeViewerBlob();
             viewerBlobUrl = blobUrl;
             viewerPath = path;
@@ -187,7 +193,9 @@ export function setupSimulation() {
                 simulationViewer.scrollIntoView({ behavior: "smooth" });
             }
         } catch (error) {
-            showMessage(getErrorMessage(error), "error");
+            if (requestId === viewerRequestId) {
+                showMessage(getErrorMessage(error), "error");
+            }
         }
     }
 
@@ -197,6 +205,7 @@ export function setupSimulation() {
     });
 
     function closeViewer(): void {
+        viewerRequestId += 1;
         if (simulationPreviewFrame) simulationPreviewFrame.src = "about:blank";
         revokeViewerBlob();
         if (simulationViewer) simulationViewer.hidden = true;
