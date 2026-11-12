@@ -54,11 +54,15 @@ RE_ALT_MARCA = re.compile(r"^[\(\[\{]?([A-Ea-e])" + CIERRE + r"+(?:\s+(.*))?$")
 
 # Contextos compartidos ("Lea la siguiente situación...", "Read the following...")
 RE_CTX_ES = re.compile(
-    r"^(?:lea\s+(?:la\s+siguiente\s+situaci[o\u00f3]n|el\s+siguiente\s+texto)|a\s+continuaci[o\u00f3]n.*?)\s+y\s+responda\s+las\s+preguntas\s+(\d+)\s*(?:y|al?)\s*(\d+)",
+    r"^(?:lea\s+(?:la\s+siguiente\s+(?:situaci[o\u00f3]n|descripci[o\u00f3]n|lectura)|el\s+siguiente\s+(?:texto|caso|fragmento))|a\s+continuaci[o\u00f3]n.*?)\s+y\s+responda\s+las?\s+preguntas?\s+([\d,\s]+(?:\s*(?:y|al?)\s*\d+)?)",
     re.I
 )
 RE_CTX_EN = re.compile(
-    r"^(?:read\s+(?:the\s+following\s+situation|the\s+following\s+text)).*?\s+answer\s+questions?\s+([\d,\s]+(?:\s+and\s+\d+)?)",
+    r"^(?:read\s+(?:the\s+following\s+(?:situation|text)|this\s+text)).*?(?:answer\s+questions?)\s*([\d,\s\-\u2013]+(?:\s*(?:and|to)\s*\d+)?)",
+    re.I
+)
+RE_CLOZE_HDR = re.compile(
+    r"^(?:cloze\b|read\s+the\s+following\s+text\s+and\s+choose\s+the\s+best\s+alternative\s+to\s+fill\s+in\s+the\s+blanks)",
     re.I
 )
 
@@ -67,6 +71,15 @@ RE_PIE = re.compile(
     r"(^\d+\s*\|?\s*A\d+-[A-Z]+-\d+.*$)|(^A\d+-[A-Z]+-\d+\s*/.*$)|(^Nota\.)|(^P[a\u00e1]gina\s+\d+)|(^Adapted from)|(^Retrieved\s+[A-Za-z0-9]+)",
     re.I
 )
+
+
+def _extraer_rango_ctx(linea: str) -> Optional[List[int]]:
+    """Extrae la lista ordenada de números de pregunta referenciados en un encabezado de contexto."""
+    m = RE_CTX_ES.search(linea) or RE_CTX_EN.search(linea)
+    if not m:
+        return None
+    nums = [int(n) for n in re.findall(r"\b\d+\b", m.group(1))]
+    return list(range(min(nums), max(nums) + 1)) if nums else None
 
 
 def _partir_en_linea(letra: str, resto: str) -> List[Tuple[str, str]]:
@@ -88,29 +101,116 @@ def _partir_en_linea(letra: str, resto: str) -> List[Tuple[str, str]]:
     return partes
 
 
+def _primera_linea(b: Tuple[Any, ...]) -> str:
+    """Devuelve la primera línea no vacía de un bloque de texto PyMuPDF."""
+    lineas = b[4].strip().splitlines()
+    return lineas[0] if lineas else ""
+
+
+def _texto_bloque(b: Tuple[Any, ...]) -> str:
+    """Normaliza saltos internos en encabezados de contexto envueltos para evitar rupturas del patrón."""
+    txt = b[4]
+    st = txt.strip()
+    if "\n" in st and re.match(r"^(?:lea\s+|read\s+|a\s+continuaci[o\u00f3]n\b)", st, re.I) \
+            and not re.search(r"^(?:pregunta|question|alternativa|option)\b", st, re.M | re.I):
+        return " ".join(st.split())
+    return txt
+
+
+def _dividir_dos_columnas(content: List[Tuple[Any, ...]], mid_x: float) -> Optional[Tuple[List[Tuple[Any, ...]], List[Tuple[Any, ...]], List[Tuple[Any, ...]]]]:
+    """Detecta páginas con lectura en columna izquierda y preguntas/opciones en columna derecha (p. ej. CLOZE)."""
+    top = [
+        b for b in content
+        if b[1] < 125 and (
+            (b[0] < mid_x - 30 and b[2] > mid_x + 30)
+            or RE_CLOZE_HDR.match(b[4].strip())
+        )
+    ]
+    top_ids = {id(b) for b in top}
+    body = [b for b in content if id(b) not in top_ids]
+    r_anchors = [
+        b for b in body
+        if b[0] >= mid_x - 10 and (
+            RE_PREG_PALABRA.match(_primera_linea(b))
+            or RE_ALT_PALABRA.match(_primera_linea(b))
+        )
+    ]
+    if len(r_anchors) < 2:
+        return None
+    split_x = min(b[0] for b in r_anchors) - 8.0
+    left = sorted([b for b in body if b[2] <= split_x], key=lambda b: b[1])
+    right = sorted([b for b in body if b[0] >= split_x], key=lambda b: b[1])
+    if len(left) < 2:
+        return None
+    return (sorted(top, key=lambda b: b[1]), left, right)
+
+
 def extraer_texto_paginas(ruta_pdf: str) -> List[str]:
     """Extrae texto página por página ordenando visualmente dos columnas (left-to-right, top-to-bottom)."""
     paginas: List[str] = []
 
-    # Intento principal con PyMuPDF: detecta columnas por posición X y filtra encabezados/pies
+    # Intento principal con PyMuPDF: detecta columnas por posición X y agrupa pasajes CLOZE multipágina
     if fitz is not None:
         try:
             with fitz.open(ruta_pdf) as doc:
+                pag_data = []
                 for page in doc:
                     blocks = page.get_text("blocks")
                     mid_x = page.rect.width / 2
-                    # Filtra encabezados (<35) y pies (>805)
-                    content = [b for b in blocks if not (b[1] > 805 or (b[1] < 35 and len(b[4].strip()) < 10))]
-                    has_l = any(b[2] <= mid_x + 20 and 120 < b[1] < 750 for b in content if len(b[4].strip()) > 30)
-                    has_r = any(b[0] >= mid_x - 20 and 120 < b[1] < 750 for b in content if len(b[4].strip()) > 30)
+                    # Ignora bloques vacíos o de imagen, encabezados (<35) y pies (>805)
+                    content = [
+                        b for b in blocks
+                        if (len(b) < 7 or b[6] == 0)
+                        and b[4].strip()
+                        and not (b[1] > 805 or (b[1] < 35 and len(b[4].strip()) < 10))
+                    ]
+                    pag_data.append((content, _dividir_dos_columnas(content, mid_x)))
 
-                    if has_l and has_r:
-                        ordered = sorted([b for b in content if b[0] < mid_x], key=lambda b: b[1]) + \
-                                  sorted([b for b in content if b[0] >= mid_x], key=lambda b: b[1])
+                i = 0
+                while i < len(pag_data):
+                    content, cols = pag_data[i]
+                    if cols is not None:
+                        top, left, right = cols
+                        es_cloze = any(RE_CLOZE_HDR.match(b[4].strip()) for b in top + left)
+                        if es_cloze:
+                            # Une toda la lectura de la columna izquierda mientras las páginas siguientes mantengan CLOZE
+                            grupo_left = list(left)
+                            derechas = [right]
+                            j = i + 1
+                            while j < len(pag_data) and pag_data[j][1] is not None:
+                                top_j, left_j, right_j = pag_data[j][1]
+                                if any(RE_PREG_PALABRA.match(_primera_linea(b)) for b in left_j):
+                                    break
+                                grupo_left.extend(top_j)
+                                grupo_left.extend(left_j)
+                                derechas.append(right_j)
+                                j += 1
+
+                            qnums = []
+                            for rb in derechas:
+                                for b in rb:
+                                    m = RE_PREG_PALABRA.match(_primera_linea(b))
+                                    if m:
+                                        qnums.append(int(m.group(1)))
+                            hdr_lineas = [" ".join(b[4].split()) for b in top if not b[4].strip().upper() == "CLOZE"]
+                            hdr_base = hdr_lineas[0] if hdr_lineas else "Read the following text and choose the best alternative to fill in the blanks."
+                            if qnums:
+                                ctx_line = f"Read the following text and answer questions {min(qnums)} to {max(qnums)}."
+                                pasaje = [ctx_line, hdr_base]
+                            else:
+                                pasaje = ["\n".join(hdr_lineas)]
+                            pasaje.extend(_texto_bloque(b) for b in grupo_left if not RE_PIE.search(b[4].strip()))
+                            paginas.append("\n".join(pasaje + [_texto_bloque(b) for b in derechas[0]]))
+                            for rb in derechas[1:]:
+                                paginas.append("\n".join(_texto_bloque(b) for b in rb))
+                            i = j
+                            continue
+                        ordered = top + left + right
                     else:
                         ordered = sorted(content, key=lambda b: b[1])
 
-                    paginas.append("\n".join(b[4] for b in ordered))
+                    paginas.append("\n".join(_texto_bloque(b) for b in ordered))
+                    i += 1
 
             if len("".join(paginas).strip()) >= 50:
                 return paginas
@@ -150,21 +250,12 @@ def agrupar_preguntas(paginas: List[str], anio: int, curso: str) -> List[Dict[st
             if RE_PIE.search(linea):
                 continue
 
-            # 1. Contexto compartido (Español: "preguntas X al Y" o Inglés: "questions X, Y and Z")
-            m_ctx = RE_CTX_ES.search(linea)
-            if m_ctx:
+            # 1. Contexto compartido (Español: "preguntas 10, 11 y 12" o Inglés: "questions 6, 7 and 8" / CLOZE)
+            nums_ctx = _extraer_rango_ctx(linea)
+            if nums_ctx:
                 _flush_ctx()
-                a, b = int(m_ctx.group(1)), int(m_ctx.group(2))
-                ctx_para, ctx_buf, destino = list(range(min(a, b), max(a, b) + 1)), [], ("ctx", None)
+                ctx_para, ctx_buf, destino = nums_ctx, [], ("ctx", None)
                 continue
-
-            m_ctx_en = RE_CTX_EN.search(linea)
-            if m_ctx_en:
-                nums = [int(n) for n in re.findall(r"\b\d+\b", m_ctx_en.group(1))]
-                if nums:
-                    _flush_ctx()
-                    ctx_para, ctx_buf, destino = list(range(min(nums), max(nums) + 1)), [], ("ctx", None)
-                    continue
 
             # 2. Alternativas (A, B, C, D, E)
             m_alt = RE_ALT_PALABRA.match(linea) or RE_ALT_MARCA.match(linea)
@@ -192,7 +283,11 @@ def agrupar_preguntas(paginas: List[str], anio: int, curso: str) -> List[Dict[st
                 ultimo = preguntas[-1]["numero"] if preguntas else 0
                 anterior_ok = (not preguntas) or len(preguntas[-1]["alternativas"]) >= 2
                 if m_num and int(m_num.group(1)) == ultimo + 1 and anterior_ok:
-                    numero, resto = int(m_num.group(1)), m_num.group(2) or ""
+                    cand_resto = (m_num.group(2) or "").strip()
+                    es_espacio_blanco = bool(re.match(r"^(?:_{2,}|\.{3,}|\u2026)", cand_resto))
+                    en_cloze = bool(destino and destino[0] == "ctx" and ctx_buf and RE_CLOZE_HDR.match(" ".join(ctx_buf)))
+                    if not es_espacio_blanco and not en_cloze:
+                        numero, resto = int(m_num.group(1)), cand_resto
 
             if numero is not None:
                 _flush_ctx()
@@ -223,6 +318,8 @@ def agrupar_preguntas(paginas: List[str], anio: int, curso: str) -> List[Dict[st
     for q in preguntas:
         if q["numero"] in contextos:
             q["contexto"] = contextos[q["numero"]]
+            if not q["enunciado"].strip() and RE_CLOZE_HDR.match(q["contexto"]):
+                q["enunciado"] = f"Choose the best alternative to fill in blank ({q['numero']})."
 
     p_dict: Dict[int, Dict[str, Any]] = {}
     for q in preguntas:
@@ -238,8 +335,21 @@ def agrupar_preguntas(paginas: List[str], anio: int, curso: str) -> List[Dict[st
 # incrustadas), así que se recortan renderizando la región de la página.
 # ---------------------------------------------------------------------------
 RE_ETIQUETA_PREG = re.compile(r"^(?:pregunta|question)\s+(\d{1,3})\s*$", re.I)
-RE_ETIQUETA_ALT = re.compile(r"^(?:alternativa|option)\s+[A-E](?:\s|$)", re.I)
+RE_ETIQUETA_ALT = re.compile(r"^(?:alternativa|option)\s+([A-E])(?:\s|$)", re.I)
+RE_ROTULO_FIG = re.compile(r"^(?:imagen|figura|tabla|gr[a\u00e1]fico)\s+\d+", re.I)
 MAX_FIGURAS_POR_PREGUNTA = 6
+
+
+def _rect_norm(r) -> Any:
+    """Garantiza grosor mínimo de 1 pt para que trazos rectos (width=0 o height=0) no queden vacíos."""
+    rr = fitz.Rect(r)
+    if rr.width < 1.0:
+        cx = (rr.x0 + rr.x1) / 2.0
+        rr.x0, rr.x1 = cx - 0.5, cx + 0.5
+    if rr.height < 1.0:
+        cy = (rr.y0 + rr.y1) / 2.0
+        rr.y0, rr.y1 = cy - 0.5, cy + 0.5
+    return rr
 
 
 def _rect_en(r, contenedor, margen: float = 4.0) -> bool:
@@ -247,9 +357,17 @@ def _rect_en(r, contenedor, margen: float = 4.0) -> bool:
             and r.y0 >= contenedor.y0 - margen and r.y1 <= contenedor.y1 + margen)
 
 
+def _dist_rects(a, b) -> float:
+    dx = max(0.0, a.x0 - b.x1, b.x0 - a.x1)
+    dy = max(0.0, a.y0 - b.y1, b.y0 - a.y1)
+    return (dx * dx + dy * dy) ** 0.5
+
+
 def _agrupar_rects(rects: List[Any], hueco: float = 12.0) -> List[Any]:
     """Une rectángulos cercanos (unión-búsqueda) y devuelve el rectángulo que cubre cada grupo."""
-    grupos = [fitz.Rect(r) for r in rects]
+    if not rects:
+        return []
+    grupos = [_rect_norm(r) for r in rects]
     cambiado = True
     while cambiado:
         cambiado = False
@@ -267,8 +385,96 @@ def _agrupar_rects(rects: List[Any], hueco: float = 12.0) -> List[Any]:
     return grupos
 
 
+def _contar_ejes_unicos(valores: List[float], tol: float = 3.0) -> int:
+    if not valores:
+        return 0
+    orden = sorted(valores)
+    grupos = [orden[0]]
+    for v in orden[1:]:
+        if v - grupos[-1] > tol:
+            grupos.append(v)
+    return len(grupos)
+
+
+def _es_tabla(g, seg_h: List[Any], seg_v: List[Any], etiquetas: List[Any]) -> bool:
+    """Reconoce tablas reales con cuadrícula interna (filas y columnas separadas por trazos oscuros)."""
+    if any(g.intersects(e) for e in etiquetas):
+        return False
+    xs_int = [(r.x0 + r.x1) / 2.0 for r in seg_v
+              if g.intersects(r) and r.height >= 12 and g.x0 + 8 < (r.x0 + r.x1) / 2.0 < g.x1 - 8]
+    ys_int = [(r.y0 + r.y1) / 2.0 for r in seg_h
+              if g.intersects(r) and r.width >= 20 and g.y0 + 8 < (r.y0 + r.y1) / 2.0 < g.y1 - 8]
+    return _contar_ejes_unicos(xs_int) >= 1 and _contar_ejes_unicos(ys_int) >= 1
+
+
+def _es_prosa_cuerpo(b: Tuple[Any, ...]) -> bool:
+    """True para párrafos de enunciado al margen izquierdo que nunca deben absorberse como rótulo."""
+    txt = b[4].strip()
+    return b[0] < 85 and b[2] > 300 and len(txt) > 25 and not RE_ROTULO_FIG.match(txt)
+
+
+def _agregar_zonas_formulas(
+    candidatos: List[Any],
+    bloques: List[Any],
+    etiquetas: List[Any],
+    math_strokes: List[Any],
+) -> List[Any]:
+    """Preserva fórmulas matemáticas vectoriales complejas (p. ej. raíz de Herón o fracciones centradas)."""
+    zonas: List[Any] = []
+    indented = [b for b in bloques if b[0] >= 125 and b[2] <= 515 and b[1] > 40 and b[3] < 785
+                and not RE_ETIQUETA_PREG.match(b[4].strip()) and not RE_ETIQUETA_ALT.match(b[4].strip())]
+    for sr in math_strokes:
+        if any(sr.intersects(fitz.Rect(e.x0 - 8, e.y0 - 8, e.x1 + 8, e.y1 + 8)) for e in etiquetas):
+            continue
+        tocados = [fitz.Rect(b[:4]) for b in indented if fitz.Rect(b[:4]).intersects(
+            fitz.Rect(sr.x0 - 6, sr.y0 - 6, sr.x1 + 6, sr.y1 + 6)
+        )]
+        if not tocados:
+            continue
+        zona = sr
+        for tr in tocados:
+            zona = zona | tr
+        # Agrupa renglones contiguos de la misma fórmula (título arriba o definición abajo)
+        for _ in range(3):
+            crecio = False
+            for b in indented:
+                br = fitz.Rect(b[:4])
+                if not _rect_en(br, zona, 0.5) and fitz.Rect(zona.x0 - 20, zona.y0 - 14, zona.x1 + 20, zona.y1 + 14).intersects(br):
+                    zona = zona | br
+                    crecio = True
+            if not crecio:
+                break
+        if zona.width >= 25 and zona.height >= 25:
+            candidatos.append(zona)
+            zonas.append(zona)
+    return zonas
+
+
+def _recortar_borde_vacio(g, bloques: List[Any], images_rects: List[Any], seg_h: List[Any]) -> Any:
+    """Recorta extensiones vacías de bordes de tabla que invaden un párrafo de texto inferior."""
+    for b in bloques:
+        if not _es_prosa_cuerpo(b):
+            continue
+        br = fitz.Rect(b[:4])
+        if g.y0 + 25 < br.y0 < g.y1 and br.x0 < g.x1 and br.x1 > g.x0:
+            hay_contenido_abajo = any(
+                bb[4].strip() and fitz.Rect(bb[:4]) != br
+                and bb[0] >= g.x0 - 2 and bb[2] <= g.x1 + 2
+                and br.y0 - 2 <= bb[1] < g.y1 + 2
+                for bb in bloques
+            ) or any(im.y1 > br.y0 + 2 and g.intersects(im) for im in images_rects)
+            if hay_contenido_abajo:
+                continue
+            h_arriba = [s for s in seg_h if g.intersects(s) and s.y1 <= br.y0 - 2.0 and s.y0 >= g.y0 + 20.0]
+            nuevo_y1 = (max(s.y1 for s in h_arriba) + 2.0) if h_arriba else (br.y0 - 2.0)
+            nuevo_y1 = min(nuevo_y1, br.y0 - 2.0)
+            if nuevo_y1 - g.y0 >= 25.0:
+                g = fitz.Rect(g.x0, g.y0, g.x1, nuevo_y1)
+    return g
+
+
 def _figuras_de_pagina(page, bloques, xrefs_decorativos: Optional[set] = None) -> List[Any]:
-    """Rectángulos de figuras (dibujos vectoriales o imágenes) de la página, sin marcos ni decoración."""
+    """Rectángulos de figuras, tablas o fórmulas de la página, sin marcos ni decoración."""
     ancho, alto = page.rect.width, page.rect.height
     etiquetas = [fitz.Rect(b[:4]) for b in bloques
                  if RE_ETIQUETA_PREG.match(b[4].strip()) or RE_ETIQUETA_ALT.match(b[4].strip())]
@@ -276,35 +482,62 @@ def _figuras_de_pagina(page, bloques, xrefs_decorativos: Optional[set] = None) -
     candidatos: List[Any] = []
     largos = [bl for bl in bloques if len(bl[4].strip()) > 40]
 
-    reglas: List[Any] = []   # líneas negras horizontales largas: delimitan recuadros de enunciado
+    reglas: List[Any] = []
+    seg_h: List[Any] = []
+    seg_v: List[Any] = []
+    math_strokes: List[Any] = []
+    crudos_dibujos: List[Tuple[Any, float, float]] = []
+
     for d in page.get_drawings():
         r = fitz.Rect(d["rect"])
-        if r.is_empty and r.width < 0.5 and r.height < 0.5:
+        rw, rh = r.width, r.height
+        if r.is_empty and rw < 0.5 and rh < 0.5:
             continue
         color = d.get("color")
-        if (r.height < 2 and r.width > 0.5 * ancho and 40 < r.y0 < 785
+        fill = d.get("fill")
+        nr = _rect_norm(r)
+
+        if (rh < 2 and rw > 0.5 * ancho and 40 < r.y0 < 785
                 and color is not None and max(color) < 0.35):
-            reglas.append(r)
+            reglas.append(nr)
         if r.y1 < 40 or r.y0 > 785:                                   # encabezado / pie (incluye logo)
             continue
-        if r.width * r.height > 0.45 * ancho * alto:                  # marco de página
+        if rw * rh > 0.45 * ancho * alto:                             # marco de página
             continue
-        if r.width > 0.8 * ancho and r.height > 0.3 * alto:           # contenedor grande
+        if rw > 0.8 * ancho and rh > 0.3 * alto:                      # contenedor grande
             continue
-        if min(r.width, r.height) < 2 and (max(r.width, r.height) > 0.6 * ancho or r.x0 <= 60):
-            continue                                                  # reglas y bordes laterales del marco
-        if any(_rect_en(r, e, 14.0) for e in etiquetas):              # fondo de "Pregunta N"/"Alternativa X"
+        if fill is None and color is not None and min(color) > 0.55 and rw > 0.65 * ancho and rh > 100:
+            continue                                                  # marco gris exterior de pregunta
+        if min(rw, rh) < 2 and (max(rw, rh) > 0.80 * ancho or r.x0 <= 65):
+            continue                                                  # separadores de ancho completo y borde lateral
+        if fill is None and rh < 2 and rw < 140 and color is not None and 0.10 < min(color) and max(color) < 0.25:
+            continue                                                  # subrayado de énfasis en texto ("no", "metacognición")
+        if any(_rect_en(nr, e, 14.0) for e in etiquetas):             # fondo de "Pregunta N"/"Alternativa X"
             continue
-        if r.width < 150 and r.height < 40 and any(
-            r.intersects(fitz.Rect(e.x0 - 10, e.y0 - 10, e.x1 + 40, e.y1 + 10)) for e in etiquetas
+        if rw < 150 and rh < 40 and any(
+            nr.intersects(fitz.Rect(e.x0 - 10, e.y0 - 10, e.x1 + 40, e.y1 + 10)) for e in etiquetas
         ):
-            continue                                                  # adornos junto a las etiquetas
-        if (r.width > 200 or r.height > 150) and sum(
-            1 for bl in largos if _rect_en(fitz.Rect(bl[:4]), r, 10.0)
-        ) >= 1:
-            continue                                                  # marcos/recuadros que rodean texto
-        candidatos.append(r)
+            continue                                                  # casillas/adornos junto a etiquetas
 
+        es_oscuro = (color is not None and max(color) < 0.55) or (fill is not None and max(fill) < 0.55)
+        if es_oscuro:
+            if rh < 2 and rw >= 10:
+                seg_h.append(nr)
+            elif rw < 2 and rh >= 10:
+                seg_v.append(nr)
+            if r.x0 >= 125 and 25 <= rw <= 220 and rh < 25:
+                if (color == (0.0, 0.0, 0.0)) or (fill == (0.0, 0.0, 0.0)):
+                    math_strokes.append(nr)
+        crudos_dibujos.append((nr, rw, rh))
+
+    for nr, rw, rh in crudos_dibujos:
+        if (rw > 200 or rh > 150) and sum(
+            1 for bl in largos if _rect_en(fitz.Rect(bl[:4]), nr, 10.0)
+        ) >= 1 and not _es_tabla(nr, seg_h, seg_v, etiquetas):
+            continue                                                  # marco aislado alrededor de prosa
+        candidatos.append(nr)
+
+    images_rects: List[Any] = []
     try:
         for info in page.get_image_info(xrefs=True):
             r = fitz.Rect(info["bbox"])
@@ -314,10 +547,14 @@ def _figuras_de_pagina(page, bloques, xrefs_decorativos: Optional[set] = None) -
                 continue                                              # banners tipo logotipo
             if r.width >= 20 and r.height >= 20 and r.width * r.height < 0.6 * ancho * alto and 40 < r.y0 < 805:
                 candidatos.append(r)
+                images_rects.append(r)
     except Exception:
         pass
 
-    figuras = []
+    zonas_formula = _agregar_zonas_formulas(candidatos, bloques, etiquetas, math_strokes)
+
+    bases: List[Any] = []
+    es_tabla_flag: List[bool] = []
     for g in _agrupar_rects(candidatos):
         if g.width < 25 or g.height < 25:
             continue
@@ -332,37 +569,121 @@ def _figuras_de_pagina(page, bloques, xrefs_decorativos: Optional[set] = None) -
             or sum(1 for e in etiquetas if g.intersects(e)) >= 2
         ):
             continue                                                  # marco de una pregunta completa
-        if sum(1 for bl in largos if _rect_en(fitz.Rect(bl[:4]), g, 10.0)) >= 2:
+        tabla = _es_tabla(g, seg_h, seg_v, etiquetas)
+        en_formula = any(g.intersects(z) for z in zonas_formula)
+        if not tabla and not en_formula and sum(1 for bl in largos if _rect_en(fitz.Rect(bl[:4]), g, 10.0)) >= 2:
             continue                                                  # agrupó texto corrido: no es una figura
-        # Incluye rótulos cortos cercanos (ej. "1 cm", "A", "x") para que la figura quede completa
-        for b in bloques:
-            br = fitz.Rect(b[:4])
-            if b[1] < 795 and len(b[4].strip()) <= 70 and not RE_ETIQUETA_ALT.match(b[4].strip()) and not RE_ETIQUETA_PREG.match(b[4].strip()) \
-                    and fitz.Rect(g.x0 - 18, g.y0 - 18, g.x1 + 18, g.y1 + 18).intersects(br):
+        bases.append(g)
+        es_tabla_flag.append(tabla)
+
+    # Prepara rótulos elegibles y evita que rótulos entre dos figuras independientes las fusionen
+    rotulos: List[Tuple[Tuple[Any, ...], Any, str]] = []
+    for b in bloques:
+        txt = b[4].strip()
+        if not txt or b[1] >= 795 or b[1] < 38:
+            continue
+        if RE_ETIQUETA_ALT.match(txt) or RE_ETIQUETA_PREG.match(txt) or _extraer_rango_ctx(" ".join(txt.split())) or RE_CLOZE_HDR.match(txt):
+            continue
+        if _es_prosa_cuerpo(b):
+            continue
+        max_len = 120 if b[0] >= 115 else 70
+        if len(txt) <= max_len:
+            rotulos.append((b, fitz.Rect(b[:4]), txt))
+
+    figuras = []
+    for idx, base_g in enumerate(bases):
+        g = fitz.Rect(base_g)
+        # Expansión iterativa (hasta 4 saltos) para capturar números de eje -> título eje -> título gráfico
+        for _ in range(4):
+            crecio = False
+            zona = fitz.Rect(g.x0 - 26, g.y0 - 20, g.x1 + 26, g.y1 + 20)
+            for _b, br, txt in rotulos:
+                if _rect_en(br, g, 0.5) or not zona.intersects(br):
+                    continue
+                if RE_ROTULO_FIG.match(txt):
+                    if txt.rstrip().endswith(":") and br.y0 >= g.y1 - 2:
+                        continue                                      # "Imagen 2:" introduce la imagen inferior, nunca la superior
+                    solapa_h = [j for j, fb in enumerate(bases)
+                                if min(fb.x1, br.x1 + 26) > max(fb.x0, br.x0 - 26)]
+                    if len(solapa_h) <= 1:
+                        mas_cercana = min(range(len(bases)), key=lambda j: _dist_rects(bases[j], br))
+                        if idx != mas_cercana:
+                            continue
+                else:
+                    dist_propia = _dist_rects(base_g, br)
+                    if any(j != idx and _dist_rects(fb, br) + 3.0 < dist_propia for j, fb in enumerate(bases)):
+                        continue                                      # rótulo más cercano a otra figura vecina
                 g = g | br
-        # Si la figura está dentro de un recuadro delimitado por dos líneas negras (enunciado + gráfico),
-        # se recorta el recuadro completo, con sus líneas, tal como se ve en el cuadernillo.
+                crecio = True
+            if not crecio:
+                break
+
+        # Recuadro entre dos líneas negras horizontales (resolución de estudiante + gráfico/fórmula)
         arriba = [r for r in reglas if r.y0 <= g.y0 + 2 and g.y0 - r.y0 < 220 and r.x0 < g.x1 and r.x1 > g.x0]
         abajo = [r for r in reglas if r.y0 >= g.y1 - 2 and r.y0 - g.y1 < 120 and r.x0 < g.x1 and r.x1 > g.x0]
         if arriba and abajo:
             ra = max(arriba, key=lambda r: r.y0)
             rb = min(abajo, key=lambda r: r.y0)
             caja = fitz.Rect(min(ra.x0, rb.x0), ra.y0 - 1, max(ra.x1, rb.x1), rb.y1 + 1)
-            if not any(caja.intersects(e) for e in etiquetas_preg):
+            cruza_prosa = any(_es_prosa_cuerpo(b) and caja.intersects(fitz.Rect(b[:4])) for b in bloques)
+            cruza_otra = any(j != idx and caja.intersects(fb) for j, fb in enumerate(bases))
+            if not cruza_prosa and not cruza_otra and not any(caja.intersects(e) for e in etiquetas):
                 g = g | caja
+
+        if es_tabla_flag[idx]:
+            g = _recortar_borde_vacio(g, bloques, images_rects, seg_h)
         figuras.append(g)
+
     # Los rótulos compartidos ("Figura 1  Figura 2  Figura 3") pueden unir/solapar figuras vecinas:
     # se fusionan las que quedaron superpuestas para no duplicar recortes parciales.
     return _agrupar_rects(figuras, hueco=0.0)
 
 
+def _bloque_entre(bloques: List[Any], y0: float, y1: float, excluir_rect) -> bool:
+    """True si existe texto relevante entre el rótulo 'Alternativa X' y la figura siguiente."""
+    for b in bloques:
+        txt = b[4].strip()
+        if not txt:
+            continue
+        br = fitz.Rect(b[:4])
+        if _rect_en(br, excluir_rect, 2.0):
+            continue
+        if br.y0 >= y0 - 2 and br.y1 <= y1 + 2 and not RE_ETIQUETA_ALT.match(txt):
+            return True
+    return False
+
+
+def _ajustar_clip(page, rect_recorte, bloques, pad: float = 6.0):
+    """Aplica margen al recorte evitando invadir líneas de texto externas adyacentes."""
+    x0, y0, x1, y1 = rect_recorte.x0 - pad, rect_recorte.y0 - pad, rect_recorte.x1 + pad, rect_recorte.y1 + pad
+    for b in bloques:
+        if (len(b) >= 7 and b[6] != 0) or not b[4].strip():
+            continue
+        br = fitz.Rect(b[:4])
+        if (br & rect_recorte).get_area() > 0.2 * max(br.get_area(), 1.0):
+            continue
+        if br.x1 > x0 and br.x0 < x1:
+            if br.y1 <= rect_recorte.y0 + 1.0 and br.y1 > y0:
+                y0 = max(y0, min(rect_recorte.y0, br.y1 + 0.5))
+            if br.y0 >= rect_recorte.y1 - 1.0 and br.y0 < y1:
+                y1 = min(y1, max(rect_recorte.y1, br.y0 - 0.5))
+        if br.y1 > rect_recorte.y0 and br.y0 < rect_recorte.y1:
+            if br.x1 <= rect_recorte.x0 + 1.0 and br.x1 > x0:
+                x0 = max(x0, min(rect_recorte.x0, br.x1 + 0.5))
+            if br.x0 >= rect_recorte.x1 - 1.0 and br.x0 < x1:
+                x1 = min(x1, max(rect_recorte.x1, br.x0 - 0.5))
+    return fitz.Rect(x0, y0, x1, y1) & page.rect
+
+
 def extraer_figuras(ruta_pdf: str, numeros: List[int], dir_salida: str) -> Dict[int, List[str]]:
-    """Recorta cada figura y la asocia a la pregunta que la precede en el orden de lectura."""
+    """Recorta cada figura y la asocia a la pregunta o contexto compartido que la precede."""
     if fitz is None:
         return {}
     conocidas = set(numeros)
     resultado: Dict[int, List[str]] = {}
     actual: Optional[int] = None
+    ctx_actual: Optional[List[int]] = None
+    alt_actual: Optional[Tuple[str, Any]] = None
     ultimo = 0
 
     with fitz.open(ruta_pdf) as doc:
@@ -382,14 +703,29 @@ def extraer_figuras(ruta_pdf: str, numeros: List[int], dir_salida: str) -> Dict[
 
             for b in bloques:
                 texto = b[4].strip()
+                if not texto:
+                    continue
+                col = columna(b[0], b[2])
+                nums_ctx = _extraer_rango_ctx(" ".join(texto.split()))
+                if nums_ctx:
+                    dests = [n for n in nums_ctx if n in conocidas]
+                    if dests:
+                        eventos.append((col, b[1], "ctx", dests))
+                        continue
+
+                m_alt = RE_ETIQUETA_ALT.match(texto)
+                if m_alt:
+                    eventos.append((col, b[1], "alt", (m_alt.group(1).upper(), fitz.Rect(b[0], b[1], b[2] + 10, b[3]))))
+                    continue
+
                 m = RE_ETIQUETA_PREG.match(texto)
                 numero = int(m.group(1)) if m else None
                 if numero is None:
-                    m2 = RE_PREG_NUM.match(texto.splitlines()[0]) if texto else None
+                    m2 = RE_PREG_NUM.match(texto.splitlines()[0])
                     if m2 and int(m2.group(1)) == ultimo + 1 and int(m2.group(1)) in conocidas:
                         numero = int(m2.group(1))
                 if numero is not None and numero in conocidas:
-                    eventos.append((columna(b[0], b[2]), b[1], "preg", numero))
+                    eventos.append((col, b[1], "preg", numero))
                     ultimo = max(ultimo, numero)
 
             for r in _figuras_de_pagina(page, bloques, decorativos):
@@ -397,17 +733,38 @@ def extraer_figuras(ruta_pdf: str, numeros: List[int], dir_salida: str) -> Dict[
 
             # Una sola columna: el orden es solo vertical (igual que extraer_texto_paginas)
             dos_columnas = any(e[0] == 1 for e in eventos if e[2] == "preg") and any(e[0] == 0 for e in eventos if e[2] == "preg")
-            eventos.sort(key=lambda e: ((e[0] if dos_columnas else 0), e[1], 0 if e[2] == "preg" else 1))
+            prioridad = {"ctx": 0, "preg": 1, "alt": 2, "fig": 3}
+            eventos.sort(key=lambda e: ((e[0] if dos_columnas else 0), e[1], prioridad[e[2]]))
 
             for _col, _y, tipo, dato in eventos:
-                if tipo == "preg":
-                    actual = dato
-                elif actual is not None and len(resultado.get(actual, [])) < MAX_FIGURAS_POR_PREGUNTA:
+                if tipo == "ctx":
+                    ctx_actual, actual, alt_actual = dato, None, None
+                elif tipo == "preg":
+                    actual, ctx_actual, alt_actual = dato, None, None
+                elif tipo == "alt":
+                    alt_actual = dato
+                elif tipo == "fig":
+                    destinos = [actual] if actual is not None else (ctx_actual or [])
+                    if not destinos:
+                        continue
+                    rect_recorte = fitz.Rect(dato)
+                    if actual is not None and alt_actual is not None:
+                        _letra, alt_rect = alt_actual
+                        if dato.y0 >= alt_rect.y0 - 2 and dato.y0 - alt_rect.y1 <= 30 \
+                                and not _bloque_entre(bloques, alt_rect.y1, dato.y0, alt_rect):
+                            rect_recorte = rect_recorte | alt_rect
+                        alt_actual = None
+
+                    clip = _ajustar_clip(page, rect_recorte, bloques)
+                    pix = page.get_pixmap(clip=clip, dpi=160)
                     os.makedirs(dir_salida, exist_ok=True)
-                    nombre = f"q{actual}_{len(resultado.get(actual, [])) + 1}.png"
-                    clip = fitz.Rect(dato.x0 - 6, dato.y0 - 6, dato.x1 + 6, dato.y1 + 6) & page.rect
-                    page.get_pixmap(clip=clip, dpi=160).save(os.path.join(dir_salida, nombre))
-                    resultado.setdefault(actual, []).append(nombre)
+                    for qnum in destinos:
+                        lista = resultado.get(qnum, [])
+                        if len(lista) >= MAX_FIGURAS_POR_PREGUNTA:
+                            continue
+                        nombre = f"q{qnum}_{len(lista) + 1}.png"
+                        pix.save(os.path.join(dir_salida, nombre))
+                        resultado.setdefault(qnum, []).append(nombre)
     return resultado
 
 
@@ -487,6 +844,9 @@ def procesar_examen(
             if q["numero"] in por_pregunta:
                 q["figuras"] = por_pregunta[q["numero"]]
                 total_figuras += len(q["figuras"])
+                for l in list(q["alternativas"].keys()):
+                    if not q["alternativas"][l].strip():
+                        q["alternativas"][l] = f"(Ver imagen: Alternativa {l})"
 
     # Guardar JSON si se indicó ruta
     if ruta_salida:
