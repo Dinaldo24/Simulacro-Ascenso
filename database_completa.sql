@@ -1,16 +1,17 @@
 -- ============================================================================
 -- BASE DE DATOS COMPLETA - SIMULADOR MINEDU
 -- Ejecuta este único archivo en tu MySQL (phpMyAdmin, Workbench o consola).
--- Creará automáticamente las 2 bases de datos necesarias para el proyecto:
---   1. proyectodirector  (Backend principal en puerto 3002)
---   2. simulador_cole    (Frontend y sesiones en puerto 4200/3000)
+-- Si ya existen las bases de datos, las ELIMINA y las REEMPLAZA desde cero,
+-- dejándolas 100% limpias y con la estructura correcta.
 -- ============================================================================
 
 -- ============================================================================
 -- PARTE 1: BASE DE DATOS PRINCIPAL: proyectodirector
 -- ============================================================================
 
-CREATE DATABASE IF NOT EXISTS `proyectodirector`
+DROP DATABASE IF EXISTS `proyectodirector`;
+
+CREATE DATABASE `proyectodirector`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
@@ -174,7 +175,9 @@ CREATE TABLE IF NOT EXISTS `simulacros_docente` (
 -- PARTE 2: BASE DE DATOS AUXILIAR: simulador_cole (Frontend y Sesiones)
 -- ============================================================================
 
-CREATE DATABASE IF NOT EXISTS `simulador_cole`
+DROP DATABASE IF EXISTS `simulador_cole`;
+
+CREATE DATABASE `simulador_cole`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
