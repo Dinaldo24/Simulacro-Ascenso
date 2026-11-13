@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS `usuarios` (
     FOREIGN KEY (`especialidadId`) REFERENCES `especialidades` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Usuario administrador inicial por defecto (email: admin@colegio.edu.pe / clave: admin123)
+INSERT INTO `usuarios` (`nombre`, `email`, `password`, `role`, `activo`)
+VALUES ('Administrador General', 'admin@colegio.edu.pe', '$2b$10$RN2XQirO//mNAFelXN0CFu94A8.cvuxVd0GhseF5arj5xv378EGiq', 'administrador', 1)
+ON DUPLICATE KEY UPDATE `password` = VALUES(`password`), `activo` = 1;
+
 -- ----------------------------------------------------------------------------
 -- 2. Tabla: anios
 -- ----------------------------------------------------------------------------
