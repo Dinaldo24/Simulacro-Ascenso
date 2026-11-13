@@ -89,16 +89,39 @@ export function setupSimulation(callbacks?: SimulationCallbacks) {
     function updateCourseOptions(): void {
         if (!simulationYear || !simulationCourse) return;
         const selectedYear = simulationYear.value;
+        const previousCourse = simulationCourse.value;
+
+        if (!selectedYear) {
+            populateSelect(simulationCourse, [], "Selecciona un curso");
+            simulationCourse.disabled = true;
+            if (simulationActions) simulationActions.hidden = true;
+            closeViewer();
+            showMessage("Selecciona un año para consultar los materiales.", "info");
+            return;
+        }
+
         const availableCourses = Array.from(
             new Set(
                 examenesList
-                    .filter((e) => !selectedYear || String(e.anio).trim() === selectedYear)
+                    .filter((e) => String(e.anio).trim() === selectedYear)
                     .map((e) => e.curso)
             )
         ).sort();
 
         populateSelect(simulationCourse, availableCourses, "Selecciona un curso");
         simulationCourse.disabled = availableCourses.length === 0;
+
+        if (availableCourses.length > 0) {
+            if (previousCourse && availableCourses.includes(previousCourse)) {
+                simulationCourse.value = previousCourse;
+            } else {
+                simulationCourse.value = availableCourses[0];
+            }
+            clearMessage();
+        } else {
+            showMessage(`No hay materiales registrados para el año ${selectedYear}.`, "info");
+        }
+
         updateSelectedMaterial();
     }
 
@@ -110,6 +133,9 @@ export function setupSimulation(callbacks?: SimulationCallbacks) {
         if (!selectedYear || !selectedCourse) {
             if (simulationActions) simulationActions.hidden = true;
             closeViewer();
+            if (selectedYear && !selectedCourse) {
+                showMessage("Selecciona un curso o especialidad para consultar los cuadernillos.", "info");
+            }
             return;
         }
 
@@ -120,8 +146,11 @@ export function setupSimulation(callbacks?: SimulationCallbacks) {
         if (!match) {
             if (simulationActions) simulationActions.hidden = true;
             closeViewer();
+            showMessage("No se encontraron materiales para la combinación seleccionada.", "info");
             return;
         }
+
+        clearMessage();
 
         const hasPreguntas = Boolean(match.tienePreguntasPdf && match.preguntasPdfUrl);
         const hasRespuestas = Boolean(match.tieneRespuestasPdf && match.respuestasPdfUrl);
@@ -269,7 +298,12 @@ export function setupSimulation(callbacks?: SimulationCallbacks) {
             populateSelect(simulationYear, availableYears, "Selecciona un año");
             if (simulationYear) simulationYear.disabled = availableYears.length === 0;
 
-            const targetAnio = preselectAnio?.trim();
+            const targetAnio =
+                preselectAnio?.trim() ||
+                (simulationYear && availableYears.includes(simulationYear.value)
+                    ? simulationYear.value
+                    : (availableYears.length > 0 ? availableYears[0] : ""));
+
             if (targetAnio && availableYears.includes(targetAnio) && simulationYear) {
                 simulationYear.value = targetAnio;
                 updateCourseOptions();

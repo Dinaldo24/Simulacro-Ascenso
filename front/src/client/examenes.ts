@@ -119,16 +119,34 @@ export function setupExamenes(callbacks?: ExamenesCallbacks) {
 
     function updateCursos(): void {
         const selectedYear = anioSelect.value;
+        const previousCurso = cursoSelect.value;
+
+        if (!selectedYear) {
+            populateSelect(cursoSelect, [], "Selecciona un año primero");
+            cursoSelect.disabled = true;
+            updateExamenInfo();
+            return;
+        }
+
         const availableCursos = Array.from(
             new Set(
                 listaExamenes
-                    .filter((e) => !selectedYear || String(e.anio).trim() === selectedYear)
+                    .filter((e) => String(e.anio).trim() === selectedYear)
                     .map((e) => e.curso)
             )
         ).sort();
 
         populateSelect(cursoSelect, availableCursos, "Selecciona un curso");
         cursoSelect.disabled = availableCursos.length === 0;
+
+        if (availableCursos.length > 0) {
+            if (previousCurso && availableCursos.includes(previousCurso)) {
+                cursoSelect.value = previousCurso;
+            } else {
+                cursoSelect.value = availableCursos[0];
+            }
+        }
+
         updateExamenInfo();
     }
 
@@ -707,7 +725,12 @@ export function setupExamenes(callbacks?: ExamenesCallbacks) {
             populateSelect(anioSelect, anios, "Selecciona un año");
             anioSelect.disabled = anios.length === 0;
 
-            const targetAnio = preselectAnio?.trim();
+            const targetAnio =
+                preselectAnio?.trim() ||
+                (anios.includes(anioSelect.value)
+                    ? anioSelect.value
+                    : (anios.length > 0 ? anios[0] : ""));
+
             if (targetAnio && anios.includes(targetAnio)) {
                 anioSelect.value = targetAnio;
                 updateCursos();
