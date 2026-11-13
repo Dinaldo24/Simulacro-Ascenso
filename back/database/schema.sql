@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS `especialidades` (
   UNIQUE KEY `UQ_especialidades_nombre` (`nombre`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+INSERT IGNORE INTO `especialidades` (`nombre`) VALUES
+  ('Comunicación'), ('Religión'), ('Educación para el Trabajo'),
+  ('Matemática'), ('Pedagogía'), ('Inglés'), ('Arte y Cultura');
+
 -- ----------------------------------------------------------------------------
 -- 1. Tabla: usuarios
 -- ----------------------------------------------------------------------------
