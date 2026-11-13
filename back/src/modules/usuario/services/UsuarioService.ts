@@ -134,12 +134,27 @@ export async function autenticarUsuario(
     password: string,
 ): Promise<{ usuario: Usuario | null; inactivo: boolean }> {
     const usuario = await AppDataSource.getRepository(Usuario).findOneBy({ email });
-    if (!usuario || !(await compare(password, usuario.password))) {
+    if (!usuario) {
+        return { usuario: null, inactivo: false };
+    }
+
+    const esHashBcrypt = usuario.password.startsWith("$2b$") || usuario.password.startsWith("$2a$");
+    const esPasswordValida = esHashBcrypt
+        ? await compare(password, usuario.password)
+        : usuario.password === password;
+
+    if (!esPasswordValida) {
         return { usuario: null, inactivo: false };
     }
 
     if (usuario.activo === false) {
         return { usuario: null, inactivo: true };
+    }
+
+    // Si estaba guardada en texto plano (ej: insertada manualmente en Workbench), actualizar al hash seguro
+    if (!esHashBcrypt) {
+        usuario.password = await hash(password, 10);
+        await AppDataSource.getRepository(Usuario).save(usuario);
     }
 
     return { usuario, inactivo: false };
