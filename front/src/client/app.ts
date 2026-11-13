@@ -20,7 +20,6 @@ interface SelectWithCustomField {
 }
 
 const CUSTOM_OPTION_VALUE = "__otro__";
-const MAX_DOCUMENT_PDF_BYTES = 35 * 1024 * 1024;
 
 function requireElement<T extends Element>(selector: string): T {
     const element = document.querySelector<T>(selector);
@@ -146,18 +145,6 @@ function populateCourseSelect(
     }
 }
 
-function validatePdfFile(file: File, label: string): string | null {
-    const isPdfName = file.name.toLowerCase().endsWith(".pdf");
-    const isPdfMime = !file.type || file.type === "application/pdf";
-    if (!isPdfName || !isPdfMime) {
-        return `El archivo de ${label} debe ser un PDF válido.`;
-    }
-    if (file.size > MAX_DOCUMENT_PDF_BYTES) {
-        return `El archivo de ${label} no puede superar los 35 MB.`;
-    }
-    return null;
-}
-
 const accountName = requireElement<HTMLElement>("#account-name");
 const accountRole = requireElement<HTMLElement>("#account-role");
 const accountAvatar = requireElement<HTMLElement>("#account-avatar");
@@ -169,17 +156,6 @@ const simulationPanel = requireElement<HTMLElement>("#simulation-panel");
 const usuariosPanel = requireElement<HTMLElement>("#usuarios-panel");
 const moduleBtnRepositorio = document.querySelector<HTMLElement>("#module-btn-repositorio");
 const moduleBtnUsuarios = document.querySelector<HTMLElement>("#module-btn-usuarios");
-const uploadToggle = requireElement<HTMLButtonElement>("#upload-toggle");
-const uploadForm = requireElement<HTMLFormElement>("#upload-form");
-const uploadCancel = requireElement<HTMLButtonElement>("#upload-cancel");
-const uploadSubmit = requireElement<HTMLButtonElement>("#upload-submit");
-const documentTitleInput = requireElement<HTMLInputElement>("#document-title");
-const documentYearSelect = requireElement<HTMLSelectElement>("#document-year-select");
-const documentYearInput = requireElement<HTMLInputElement>("#document-year");
-const documentCourseSelect = requireElement<HTMLSelectElement>("#document-course-select");
-const documentCourseInput = requireElement<HTMLInputElement>("#document-course");
-const documentFilePreguntas = requireElement<HTMLInputElement>("#document-file-preguntas");
-const documentFileRespuestas = requireElement<HTMLInputElement>("#document-file-respuestas");
 const repositoryMessage = requireElement<HTMLElement>("#repository-message");
 const pdfPreviewDialog = requireElement<HTMLDialogElement>("#pdf-preview-dialog");
 const pdfPreviewTitle = requireElement<HTMLElement>("#pdf-preview-title");
@@ -196,19 +172,11 @@ const editYearSelect = requireElement<HTMLSelectElement>("#edit-document-year-se
 const editYearInput = requireElement<HTMLInputElement>("#edit-document-year");
 const editCourseSelect = requireElement<HTMLSelectElement>("#edit-document-course-select");
 const editCourseInput = requireElement<HTMLInputElement>("#edit-document-course");
-const editPreguntasCurrent = requireElement<HTMLElement>("#edit-document-preguntas-current");
-const editRespuestasCurrent = requireElement<HTMLElement>("#edit-document-respuestas-current");
-const editFilePreguntas = requireElement<HTMLInputElement>("#edit-document-file-preguntas");
-const editFileRespuestas = requireElement<HTMLInputElement>("#edit-document-file-respuestas");
 const currentYear = requireElement<HTMLElement>("#current-year");
 
-const uploadYearField: SelectWithCustomField = { select: documentYearSelect, customInput: documentYearInput };
-const uploadCourseField: SelectWithCustomField = { select: documentCourseSelect, customInput: documentCourseInput };
 const editYearField: SelectWithCustomField = { select: editYearSelect, customInput: editYearInput };
 const editCourseField: SelectWithCustomField = { select: editCourseSelect, customInput: editCourseInput };
 
-bindSelectWithCustomField(uploadYearField);
-bindSelectWithCustomField(uploadCourseField);
 bindSelectWithCustomField(editYearField);
 bindSelectWithCustomField(editCourseField);
 
@@ -217,7 +185,7 @@ currentYear.textContent = String(new Date().getFullYear());
 const modules: Record<ModuleName, AppModule> = {
     repositorio: {
         title: "Repositorio",
-        description: "Consulta y organiza los recursos educativos del colegio."
+        description: "Consulta y vista general de todos los recursos educativos del colegio."
     },
     examenes: {
         title: "Simulación",
@@ -270,7 +238,6 @@ const repository = setupRepository({
     onDelete: deleteDocument,
     onCanManageChange: (canManage: boolean) => {
         canManageRepository = canManage;
-        uploadToggle.hidden = !canManage;
     },
     onError: (message: string) => showRepositoryMessage(message, "error")
 });
@@ -285,13 +252,8 @@ const coverEditor = setupCoverEditor({
 async function loadEspecialidadesForRepo(): Promise<EspecialidadItem[]> {
     try {
         especialidadesCache = await fetchEspecialidades();
-        populateCourseSelect(documentCourseSelect, especialidadesCache);
-        syncCustomInputVisibility(uploadCourseField);
     } catch {
-        // Mantiene la opción "Otro curso / especialidad..." si el catálogo falla.
-        if (documentCourseSelect.options.length === 0) {
-            populateCourseSelect(documentCourseSelect, []);
-        }
+        especialidadesCache = [];
     }
     return especialidadesCache;
 }
@@ -328,15 +290,7 @@ function showAuthenticatedUser(user: AuthenticatedUser): void {
         moduleBtnUsuarios.hidden = !esGestor;
     }
 
-    // 2. Ocultar subida de PDFs en Repositorio para Docentes y Alumnos
-    if (uploadToggle) {
-        uploadToggle.hidden = !esGestor;
-    }
-    if (uploadForm && !esGestor) {
-        resetAndCloseUploadForm();
-    }
-
-    // 3. Ocultar subida y eliminación de exámenes para Docentes y Alumnos
+    // 2. Ocultar subida y eliminación de exámenes para Docentes y Alumnos
     const btnToggleSubirExamen = document.querySelector<HTMLElement>("#btn-toggle-subir-examen");
     if (btnToggleSubirExamen) {
         btnToggleSubirExamen.hidden = !esGestor;
@@ -450,7 +404,7 @@ function closePdfPreview(): void {
     }
 }
 
-async function openEditDialog(item: RepositoryDocument, focusTarget?: PdfTipo): Promise<void> {
+async function openEditDialog(item: RepositoryDocument): Promise<void> {
     const token = ++editDialogOpenToken;
     const especialidades = await loadEspecialidadesForRepo();
     if (token !== editDialogOpenToken) {
@@ -466,20 +420,10 @@ async function openEditDialog(item: RepositoryDocument, focusTarget?: PdfTipo): 
     applySelectOrCustomValue(editYearField, item.anio);
     applySelectOrCustomValue(editCourseField, item.curso);
 
-    editPreguntasCurrent.textContent = `Actual: ${item.nombre_archivo || "archivo.pdf"} (dejar vacío para conservar)`;
-    editRespuestasCurrent.textContent = item.tiene_respuestas
-        ? `Actual: ${item.respuestas_nombre_archivo || "respuestas.pdf"} (dejar vacío para conservar)`
-        : "Sin archivo adjunto actualmente";
-
     if (!documentEditDialog.open) {
         documentEditDialog.showModal();
     }
-
-    if (focusTarget === "respuestas") {
-        editFileRespuestas.focus();
-    } else {
-        editTitleInput.focus();
-    }
+    editTitleInput.focus();
 }
 
 function syncMaterialsAndExams(): void {
@@ -516,31 +460,6 @@ async function deleteDocument(item: RepositoryDocument, button: HTMLButtonElemen
     }
 }
 
-function resetAndCloseUploadForm(): void {
-    uploadForm.reset();
-    syncCustomInputVisibility(uploadYearField);
-    syncCustomInputVisibility(uploadCourseField);
-    uploadForm.hidden = true;
-    uploadToggle.setAttribute("aria-expanded", "false");
-}
-
-uploadToggle.addEventListener("click", () => {
-    const shouldOpen = uploadForm.hidden;
-    uploadForm.hidden = !shouldOpen;
-    uploadToggle.setAttribute("aria-expanded", String(shouldOpen));
-
-    if (shouldOpen) {
-        clearRepositoryMessage();
-        void loadEspecialidadesForRepo();
-        documentYearSelect.focus();
-    }
-});
-
-uploadCancel.addEventListener("click", () => {
-    resetAndCloseUploadForm();
-    clearRepositoryMessage();
-});
-
 pdfPreviewClose.addEventListener("click", closePdfPreview);
 pdfPreviewDialog.addEventListener("click", (event) => {
     if (event.target === pdfPreviewDialog) {
@@ -572,8 +491,6 @@ documentEditForm.addEventListener("submit", async (event) => {
     const titulo = editTitleInput.value.trim();
     const anio = resolveSelectOrCustomValue(editYearField);
     const curso = resolveSelectOrCustomValue(editCourseField);
-    const pdfPreguntas = editFilePreguntas.files?.[0];
-    const pdfRespuestas = editFileRespuestas.files?.[0];
 
     if (!titulo) {
         setAlert(documentEditAlert, "El título del documento es obligatorio.", "error");
@@ -594,24 +511,6 @@ documentEditForm.addEventListener("submit", async (event) => {
         return;
     }
 
-    const preguntasError = pdfPreguntas ? validatePdfFile(pdfPreguntas, "cuadernillo de preguntas") : null;
-    if (preguntasError) {
-        setAlert(documentEditAlert, preguntasError, "error");
-        return;
-    }
-    const respuestasError = pdfRespuestas ? validatePdfFile(pdfRespuestas, "hoja de respuestas") : null;
-    if (respuestasError) {
-        setAlert(documentEditAlert, respuestasError, "error");
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append("titulo", titulo);
-    formData.append("curso", curso);
-    formData.append("anio", anio);
-    if (pdfPreguntas) formData.append("pdfPreguntas", pdfPreguntas);
-    if (pdfRespuestas) formData.append("pdfRespuestas", pdfRespuestas);
-
     documentEditSubmit.disabled = true;
     documentEditSubmit.textContent = "Guardando...";
 
@@ -620,7 +519,14 @@ documentEditForm.addEventListener("submit", async (event) => {
             `${BACKEND_URL}/documentos/${encodeURIComponent(editingDocument.id_documento)}`,
             {
                 method: "PATCH",
-                body: formData
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    titulo,
+                    curso,
+                    anio
+                })
             },
         );
         if (response.status === 401) return;
@@ -639,79 +545,6 @@ documentEditForm.addEventListener("submit", async (event) => {
     } finally {
         documentEditSubmit.disabled = false;
         documentEditSubmit.textContent = "Guardar cambios";
-    }
-});
-
-uploadForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    clearRepositoryMessage();
-
-    const anio = resolveSelectOrCustomValue(uploadYearField);
-    const curso = resolveSelectOrCustomValue(uploadCourseField);
-    const titulo = documentTitleInput.value.trim();
-    const pdfPreguntas = documentFilePreguntas.files?.[0];
-    const pdfRespuestas = documentFileRespuestas.files?.[0];
-
-    if (!anio) {
-        showRepositoryMessage("Selecciona o ingresa el año o grado.", "error");
-        return;
-    }
-    if (!curso) {
-        showRepositoryMessage("Selecciona o ingresa el curso o especialidad.", "error");
-        return;
-    }
-    if (!pdfPreguntas) {
-        showRepositoryMessage("Selecciona el cuadernillo de preguntas en PDF.", "error");
-        return;
-    }
-
-    const preguntasError = validatePdfFile(pdfPreguntas, "cuadernillo de preguntas");
-    if (preguntasError) {
-        showRepositoryMessage(preguntasError, "error");
-        return;
-    }
-    const respuestasError = pdfRespuestas ? validatePdfFile(pdfRespuestas, "hoja de respuestas") : null;
-    if (respuestasError) {
-        showRepositoryMessage(respuestasError, "error");
-        return;
-    }
-
-    const formData = new FormData();
-    if (titulo) {
-        formData.append("titulo", titulo);
-    }
-    formData.append("curso", curso);
-    formData.append("anio", anio);
-    formData.append("pdfPreguntas", pdfPreguntas);
-    if (pdfRespuestas) {
-        formData.append("pdfRespuestas", pdfRespuestas);
-    }
-
-    uploadSubmit.disabled = true;
-    uploadSubmit.textContent = "Subiendo...";
-
-    try {
-        const response = await authorizedFetch(`${BACKEND_URL}/documentos`, {
-            method: "POST",
-            body: formData
-        });
-        if (response.status === 401) return;
-        const payload: unknown = await response.json().catch(() => null);
-
-        if (!response.ok) {
-            throw new Error(getResponseMessage(payload, "No se pudo subir el documento."));
-        }
-
-        resetAndCloseUploadForm();
-        uploadToggle.hidden = !canManageRepository;
-        showRepositoryMessage(getResponseMessage(payload, "El documento se agregó al repositorio."), "success");
-        await repository.loadDocuments();
-        syncMaterialsAndExams();
-    } catch (error) {
-        showRepositoryMessage(getErrorMessage(error), "error");
-    } finally {
-        uploadSubmit.disabled = false;
-        uploadSubmit.textContent = "Guardar Documentos";
     }
 });
 
@@ -735,8 +568,6 @@ setupAuthentication({
         if (moduleBtnRepositorio) moduleBtnRepositorio.hidden = true;
         if (moduleBtnUsuarios) moduleBtnUsuarios.hidden = true;
         repositoryPanel.hidden = true;
-        resetAndCloseUploadForm();
-        uploadToggle.hidden = true;
         closePdfPreview();
         ++editDialogOpenToken;
         if (documentEditDialog.open) documentEditDialog.close();

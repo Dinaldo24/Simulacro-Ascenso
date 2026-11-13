@@ -34,7 +34,7 @@ export interface RepositoryDocument {
 export interface RepositoryCallbacks {
     onPreview: (doc: RepositoryDocument, tipo: PdfTipo) => void;
     onChangeCover?: (doc: RepositoryDocument) => void;
-    onEdit?: (doc: RepositoryDocument, focusTarget?: PdfTipo) => void;
+    onEdit?: (doc: RepositoryDocument) => void;
     onDelete: (doc: RepositoryDocument, button: HTMLButtonElement) => void;
     onError: (message: string) => void;
     onCanManageChange: (canManage: boolean) => void;
@@ -151,7 +151,7 @@ export function setupRepository(callbacks: RepositoryCallbacks) {
         return td;
     }
 
-    function createEmptyRespuestasCell(item: RepositoryDocument): HTMLTableCellElement {
+    function createEmptyRespuestasCell(): HTMLTableCellElement {
         const td = document.createElement("td");
         td.className = "col-pdf-respuestas";
 
@@ -162,17 +162,6 @@ export function setupRepository(callbacks: RepositoryCallbacks) {
         muted.className = "repo-pdf-missing";
         muted.textContent = "Sin archivo";
         emptyWrap.append(muted);
-
-        if (canManageRepository && callbacks.onEdit) {
-            const attachBtn = document.createElement("button");
-            attachBtn.className = "button button--secondary button--xs";
-            attachBtn.type = "button";
-            attachBtn.textContent = "Adjuntar";
-            attachBtn.title = "Adjuntar hoja de respuestas PDF";
-            attachBtn.setAttribute("aria-label", `Adjuntar hoja de respuestas para ${item.titulo}`);
-            attachBtn.addEventListener("click", () => callbacks.onEdit!(item, "respuestas"));
-            emptyWrap.append(attachBtn);
-        }
 
         td.append(emptyWrap);
         return td;
@@ -200,7 +189,7 @@ export function setupRepository(callbacks: RepositoryCallbacks) {
                 downloadFilename: item.respuestas_nombre_archivo || `${item.titulo}_Respuestas.pdf`,
                 item,
             })
-            : createEmptyRespuestasCell(item);
+            : createEmptyRespuestasCell();
 
         const tdCourse = document.createElement("td");
         tdCourse.className = "col-course";
